@@ -201,7 +201,7 @@ This project is proprietary software developed by Michael R Smith. All rights re
 
 **Michael R Smith**
 - GitHub: [@MSMITH71910](https://github.com/MSMITH71910)
-- Email: [contact information]
+- Email: [m.smith71910@gmail.com]
 
 ## 🙏 Acknowledgments
 
