@@ -53,17 +53,19 @@ A comprehensive construction management solution designed to streamline project 
 - **Frontend**: HTML5, CSS3, JavaScript (ES6+)
 - **UI Framework**: Bootstrap 5
 - **Icons**: Bootstrap Icons
-- **Backend**: Node.js with Express
+- **Backend**: Node.js/Express or Deno (dual runtime support)
 - **Data Storage**: LocalStorage for demo, extensible to database
 - **Architecture**: Modular component-based design
 
 ## 📦 Installation
 
 ### Prerequisites
-- Node.js (v14 or higher)
-- npm or yarn package manager
+- **Option 1**: Node.js (v14 or higher) and npm/yarn
+- **Option 2**: Deno (v1.37 or higher)
 
 ### Local Development
+
+#### Using Node.js (Traditional)
 
 1. **Clone the repository:**
    ```bash
@@ -79,6 +81,27 @@ A comprehensive construction management solution designed to streamline project 
 3. **Start the development server:**
    ```bash
    npm start
+   ```
+
+#### Using Deno (Modern Runtime)
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/MSMITH71910/constructpro_manager.git
+   cd constructpro_manager
+   ```
+
+2. **Start with Deno (no installation needed):**
+   ```bash
+   deno task start
+   # or for development with auto-reload:
+   deno task dev
+   ```
+
+3. **Alternative npm scripts:**
+   ```bash
+   npm run deno:start
+   npm run deno:dev
    ```
 
 4. **Access the application:**

@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
+    "deno:start": "deno task start",
+    "deno:dev": "deno task dev",
     "build": "npm install --production",
     "test": "jest",
     "test:watch": "jest --watch"

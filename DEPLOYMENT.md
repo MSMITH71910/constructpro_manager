@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers deploying ConstructPro Manager to various platforms including Vercel, Heroku, and traditional web servers.
+This guide covers deploying ConstructPro Manager to various platforms using either Node.js or Deno runtime. The application supports both runtimes for maximum flexibility.
 
 ## 🚀 Quick Deploy to Vercel
 
@@ -72,6 +72,36 @@ Set the following environment variables in your Vercel dashboard:
 NODE_ENV=production
 PORT=3000
 SESSION_SECRET=your-secure-secret-key
+```
+
+## 🦕 Deno Deploy (Recommended for Modern Apps)
+
+### Instant Deployment
+
+1. **Push to GitHub** (if not already done)
+2. **Visit [Deno Deploy](https://deno.com/deploy)**
+3. **Connect GitHub repository**
+4. **Set entry point**: `server.ts`
+5. **Deploy automatically**
+
+### Manual Deno Deploy
+
+1. **Install Deno Deploy CLI:**
+   ```bash
+   deno install --allow-read --allow-write --allow-env --allow-net --allow-run -n deployctl https://deno.land/x/deploy/deployctl.ts
+   ```
+
+2. **Deploy:**
+   ```bash
+   deployctl deploy --project=constructpro-manager server.ts
+   ```
+
+### Deno Deploy Configuration
+
+Environment variables:
+```
+NODE_ENV=production
+PORT=8000  # Handled automatically by Deno Deploy
 ```
 
 ## 🌐 Alternative Deployment Options
