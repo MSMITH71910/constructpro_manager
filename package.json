@@ -1,0 +1,70 @@
+{
+  "name": "constructpro-manager",
+  "version": "1.0.0",
+  "description": "Complete Construction Management Solution - Streamlining project workflows, client management, and financial tracking for construction professionals.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "build": "npm install --production",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "keywords": [
+    "construction",
+    "project-management",
+    "contractors",
+    "estimating",
+    "blueprints",
+    "construction-management",
+    "takeoff",
+    "client-management"
+  ],
+  "author": "Michael R Smith <msmith71910@github.com>",
+  "license": "Proprietary",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MSMITH71910/constructpro_manager.git"
+  },
+  "homepage": "https://github.com/MSMITH71910/constructpro_manager#readme",
+  "engines": {
+    "node": ">=14.0.0",
+    "npm": ">=6.0.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.8.3",
+    "@types/jest": "^29.5.5",
+    "electron": "^25.9.8",
+    "electron-builder": "^24.6.4",
+    "jest": "^29.7.0",
+    "jsdom": "^26.1.0"
+  },
+  "dependencies": {
+    "bootstrap": "^5.3.2",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "build": {
+    "appId": "com.constructpro.manager",
+    "productName": "ConstructPro Manager",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ]
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/src",
+      "<rootDir>/tests"
+    ],
+    "testMatch": [
+      "**/__tests__/**/*.js",
+      "**/?(*.)+(spec|test).js"
+    ]
+  }
+}
