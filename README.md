@@ -1,6 +1,10 @@
 # ConstructPro Manager - Enterprise General Contractor Suite
 
-![ConstructPro Manager Dashboard](ConstructPro_manager_Dash.png)
+<div align="center">
+  <img src="ConstructPro_manager_Dash.png" alt="ConstructPro Manager Dashboard" width="800">
+  <br>
+  <img src="ConstructPro_Login.png" alt="ConstructPro Manager Login" width="400">
+</div>
 
 **ConstructPro Manager** is a high-performance, all-in-one management suite I developed specifically for General Contractors and trade professionals. This platform transforms complex construction workflows into a streamlined, automated experience—handling everything from the first takeoff to final payroll.
 
