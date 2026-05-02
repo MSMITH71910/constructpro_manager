@@ -4275,6 +4275,8 @@ class ConstructProApp {
         if (this.currentModule === 'team') {
             this.loadTeam();
         }
+    }
+
     updateProfile() {
         const form = document.getElementById('profileSettingsForm');
         if (!form) return;
