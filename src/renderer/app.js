@@ -120,6 +120,19 @@ class ConstructProApp {
     updateNavbarWithUser() {
         if (!this.currentUser) return;
         
+        // Add Admin link if user is contractor/admin
+        if (this.currentUser.role === 'contractor' || this.currentUser.role === 'admin') {
+            const navbarNav = document.querySelector('.navbar-nav');
+            if (navbarNav && !document.querySelector('[data-module="admin"]')) {
+                const adminBtn = document.createElement('button');
+                adminBtn.className = 'btn btn-link nav-link px-3 nav-btn text-warning';
+                adminBtn.setAttribute('data-module', 'admin');
+                adminBtn.innerHTML = '<i class="bi bi-shield-lock"></i> Admin';
+                adminBtn.onclick = () => this.loadModule('admin');
+                navbarNav.appendChild(adminBtn);
+            }
+        }
+        
         // Add user dropdown to navbar
         const navbarNav = document.querySelector('.navbar-nav');
         
@@ -443,9 +456,111 @@ class ConstructProApp {
             case 'reports':
                 this.loadReports();
                 break;
+            case 'admin':
+                this.loadAdmin();
+                break;
             default:
                 this.loadDashboard();
         }
+    }
+
+    loadAdmin() {
+        const users = window.authManager ? window.authManager.users : [];
+        const content = `
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-1 fw-bold"><i class="bi bi-shield-lock text-danger"></i> Admin Control Center</h2>
+                            <p class="text-muted">System management and user oversight</p>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-outline-primary" onclick="app.loadModule('admin')">
+                                <i class="bi bi-arrow-clockwise me-1"></i> Refresh Data
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4 mb-4">
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body p-4 border-start border-4 border-primary">
+                            <h6 class="text-muted small text-uppercase fw-bold">Total Users</h6>
+                            <h2 class="mb-0 fw-bold">${users.length}</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body p-4 border-start border-4 border-success">
+                            <h6 class="text-muted small text-uppercase fw-bold">Active Sessions</h6>
+                            <h2 class="mb-0 fw-bold">1</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body p-4 border-start border-4 border-warning">
+                            <h6 class="text-muted small text-uppercase fw-bold">Storage Used</h6>
+                            <h2 class="mb-0 fw-bold">1.2 MB</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">User Management</h5>
+                    <button class="btn btn-sm btn-primary" onclick="app.showAlert('info', 'Manual user creation coming soon')">
+                        <i class="bi bi-plus-lg"></i> Add User
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4">User</th>
+                                    <th>Company</th>
+                                    <th>Role</th>
+                                    <th>Last Login</th>
+                                    <th>Status</th>
+                                    <th class="text-end pe-4">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${users.map(user => `
+                                    <tr>
+                                        <td class="ps-4">
+                                            <div class="d-flex align-items-center">
+                                                <div class="bg-light rounded-circle p-2 me-3">
+                                                    <i class="bi bi-person text-primary"></i>
+                                                </div>
+                                                <div>
+                                                    <div class="fw-bold">${user.firstName} ${user.lastName}</div>
+                                                    <small class="text-muted">${user.username} | ${user.email}</small>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>${user.company}</td>
+                                        <td><span class="badge bg-primary-subtle text-primary">${this.getRoleDisplayName(user.role)}</span></td>
+                                        <td><small>${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}</small></td>
+                                        <td><span class="badge bg-success-subtle text-success">Active</span></td>
+                                        <td class="text-end pe-4">
+                                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="app.showAlert('info', 'Edit user coming soon')"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="app.showAlert('info', 'Delete user coming soon')"><i class="bi bi-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('mainContent').innerHTML = content;
     }
 
     loadBlueprints() {
