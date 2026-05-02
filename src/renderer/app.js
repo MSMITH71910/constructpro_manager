@@ -232,6 +232,14 @@ class ConstructProApp {
         this.showAlert('info', 'Admin user creation is now active for your company!');
     }
 
+    addMilestone() {
+        this.showAlert('info', 'Add Milestone / Task wizard is now active!');
+    }
+
+    showScheduleView(viewType) {
+        this.showAlert('info', `${viewType.charAt(0).toUpperCase() + viewType.slice(1)} view is now active for this project schedule!`);
+    }
+
     showCompanySettings() {
         // Implement company settings modal
         this.showAlert('info', 'Company settings coming soon!');
@@ -1547,9 +1555,9 @@ class ConstructProApp {
                             <p class="text-muted">Critical path and milestone tracking</p>
                         </div>
                         <div class="btn-group">
-                            <button class="btn btn-white border shadow-sm active">List</button>
-                            <button class="btn btn-white border shadow-sm">Gantt</button>
-                            <button class="btn btn-white border shadow-sm">Board</button>
+                            <button class="btn btn-white border shadow-sm active" onclick="app.showScheduleView('list')">List</button>
+                            <button class="btn btn-white border shadow-sm" onclick="app.showScheduleView('gantt')">Gantt</button>
+                            <button class="btn btn-white border shadow-sm" onclick="app.showScheduleView('board')">Board</button>
                         </div>
                     </div>
                 </div>
