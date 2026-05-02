@@ -1972,6 +1972,7 @@ class ConstructProApp {
             localStorage.setItem('constructpro_clock_task', this.activeClockTask);
 
             this.loadTimeClock();
+            this.renderNavbar();
             this.startClockTimer();
             this.showAlert('success', `Clocked in for ${this.activeClockProjectName}`);
         } else {
@@ -2007,6 +2008,9 @@ class ConstructProApp {
             localStorage.removeItem('constructpro_clock_project_id');
             localStorage.removeItem('constructpro_clock_project_name');
             localStorage.removeItem('constructpro_clock_task');
+            
+            this.loadTimeClock();
+            this.renderNavbar();
 
             this.showAlert('info', `Clocked out. Session saved.`);
             this.loadTimeClock();
