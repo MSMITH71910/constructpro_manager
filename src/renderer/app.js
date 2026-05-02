@@ -366,6 +366,7 @@ class ConstructProApp {
                 this.loadModule(this.currentModule);
             }
         });
+    }
 
     // Modal event listeners
     setupModalListeners() {
