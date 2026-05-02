@@ -84,6 +84,9 @@ class BlueprintManager {
 
     // Show Stack-Style Professional Interface
     showBlueprintInterface() {
+        if (!document.getElementById('uploadBlueprintModal')) {
+            this.injectUploadModal();
+        }
         const currentProjectHeader = this.currentProject ? `
             <div class="card border-0 shadow-sm mb-4 border-start border-4 border-primary">
                 <div class="card-body py-2">
@@ -822,6 +825,79 @@ class BlueprintManager {
         this.setTool('select');
     }
 
+    showUploadModal() {
+        if (!document.getElementById('uploadBlueprintModal')) {
+            this.injectUploadModal();
+        }
+        const modal = new bootstrap.Modal(document.getElementById('uploadBlueprintModal'));
+        modal.show();
+    }
+
+    injectUploadModal() {
+        const modalHtml = `
+            <div class="modal fade" id="uploadBlueprintModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-primary text-white py-3">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-cloud-upload me-2"></i> Upload Project Blueprints</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form id="uploadBlueprintForm">
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold">Select Project</label>
+                                    <input type="text" class="form-control" id="projectName" value="${this.currentProject ? this.currentProject.name : ''}" readonly>
+                                </div>
+                                <div class="upload-zone p-5 border-2 border-dashed rounded-3 text-center mb-4 bg-light" id="blueprintDropZone">
+                                    <i class="bi bi-file-earmark-pdf display-4 text-muted mb-3"></i>
+                                    <h5>Drag and drop PDF blueprints here</h5>
+                                    <p class="text-muted">or click to browse from your computer</p>
+                                    <input type="file" id="blueprintFiles" class="d-none" multiple accept=".pdf,image/*">
+                                    <button type="button" class="btn btn-outline-primary mt-2" onclick="document.getElementById('blueprintFiles').click()">Browse Files</button>
+                                </div>
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">Default Scale</label>
+                                        <select class="form-select" id="blueprintDefaultScale">
+                                            <option value="1/4">1/4" = 1'-0"</option>
+                                            <option value="1/8">1/8" = 1'-0"</option>
+                                            <option value="1/16">1/16" = 1'-0"</option>
+                                            <option value="custom">Custom Scale</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">Document Category</label>
+                                        <select class="form-select" id="blueprintCategory">
+                                            <option value="architectural">Architectural</option>
+                                            <option value="structural">Structural</option>
+                                            <option value="mechanical">Mechanical</option>
+                                            <option value="electrical">Electrical</option>
+                                            <option value="plumbing">Plumbing</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold">Internal Notes</label>
+                                    <textarea class="form-control" id="blueprintNotes" rows="3" placeholder="Add any specific instructions for the takeoff team..."></textarea>
+                                </div>
+                                <div id="uploadProgress" class="progress mb-4" style="display: none; height: 10px;">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer bg-light py-3">
+                            <button type="button" class="btn btn-white border px-4" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary px-4" onclick="blueprintManager.uploadBlueprints()">
+                                <i class="bi bi-cloud-arrow-up me-1"></i> Start Upload
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
     async uploadBlueprints() {
         const files = document.getElementById('blueprintFiles').files;
         const projectName = document.getElementById('projectName').value;
@@ -944,4 +1020,4 @@ class BlueprintManager {
 }
 
 // Initialize blueprint manager
-const blueprintManager = new BlueprintManager();
+window.blueprintManager = new BlueprintManager();

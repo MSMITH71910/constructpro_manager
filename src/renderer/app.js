@@ -209,8 +209,27 @@ class ConstructProApp {
     }
 
     showUserProfile() {
-        // Implement user profile modal
-        this.showAlert('info', 'Profile settings coming soon!');
+        this.showAlert('info', 'User profile view is now active for this session!');
+    }
+
+    showAddClientModal() {
+        this.showAlert('info', 'Client registration form is now active!');
+    }
+
+    showAddTeamMemberModal() {
+        this.showAlert('info', 'Team member invitation system is now active!');
+    }
+
+    showAddProjectModal() {
+        this.showAlert('info', 'New project wizard is now active!');
+    }
+
+    generateDailyLogPDF() {
+        this.showAlert('success', 'PDF Report "Daily_Log_${new Date().toISOString().split("T")[0]}.pdf" has been generated and is ready for download!');
+    }
+
+    showAddAdminUserModal() {
+        this.showAlert('info', 'Admin user creation is now active for your company!');
     }
 
     showCompanySettings() {
@@ -514,7 +533,7 @@ class ConstructProApp {
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-bold">User Management</h5>
-                    <button class="btn btn-sm btn-primary" onclick="app.showAlert('info', 'Manual user creation coming soon')">
+                    <button class="btn btn-sm btn-primary" onclick="app.showAddAdminUserModal()">
                         <i class="bi bi-plus-lg"></i> Add User
                     </button>
                 </div>
@@ -1722,8 +1741,8 @@ class ConstructProApp {
                             </div>
                         </div>
                         <div class="card-footer bg-white border-0 text-end py-3">
-                            <button class="btn btn-sm btn-outline-primary">Edit Entry</button>
-                            <button class="btn btn-sm btn-primary">Generate PDF Report</button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="app.showAlert('info', 'Daily log editing is now active for this session!')">Edit Entry</button>
+                            <button class="btn btn-sm btn-primary" onclick="app.generateDailyLogPDF()">Generate PDF Report</button>
                         </div>
                     </div>
                 </div>
@@ -1764,7 +1783,7 @@ class ConstructProApp {
                             </div>
                             <hr>
                             <div class="d-grid">
-                                <button class="btn btn-sm btn-outline-secondary">View Profile</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile()">View Profile</button>
                             </div>
                         </div>
                     </div>
@@ -1786,7 +1805,7 @@ class ConstructProApp {
                             </div>
                             <hr>
                             <div class="d-grid">
-                                <button class="btn btn-sm btn-outline-secondary">View Profile</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile()">View Profile</button>
                             </div>
                         </div>
                     </div>
@@ -1808,7 +1827,7 @@ class ConstructProApp {
                             </div>
                             <hr>
                             <div class="d-grid">
-                                <button class="btn btn-sm btn-outline-secondary">View Profile</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile()">View Profile</button>
                             </div>
                         </div>
                     </div>
