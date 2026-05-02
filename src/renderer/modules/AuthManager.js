@@ -592,21 +592,40 @@ class AuthManager {
     }
 
     hasPermission(permission) {
-        // Implement role-based permissions if needed
-        if (!this.isAuthenticated) return false;
+        if (!this.isAuthenticated || !this.currentUser) return false;
         
-        const permissions = {
-            'admin': ['view_all', 'edit_all', 'delete_all', 'manage_users'],
-            'contractor': ['view_own', 'edit_own', 'create_projects'],
-            'subcontractor': ['view_assigned', 'edit_assigned'],
-            'project_manager': ['view_projects', 'edit_projects', 'manage_team'],
-            'estimator': ['view_projects', 'create_estimates', 'edit_estimates'],
-            'architect': ['view_projects', 'upload_blueprints', 'edit_designs'],
-            'engineer': ['view_projects', 'upload_blueprints', 'create_calculations']
+        const rolePermissions = {
+            'admin': ['*'],
+            'owner': ['*'],
+            'project_manager': ['dashboard', 'projects', 'schedule', 'blueprints', 'takeoff', 'daily-logs', 'team', 'contracts', 'clients', 'finance', 'timeclock'],
+            'estimator': ['dashboard', 'projects', 'blueprints', 'takeoff', 'contracts', 'clients'],
+            'superintendent': ['dashboard', 'projects', 'schedule', 'blueprints', 'daily-logs', 'timeclock'],
+            'field_manager': ['dashboard', 'projects', 'daily-logs', 'timeclock'],
+            'contractor': ['dashboard', 'projects', 'schedule', 'blueprints', 'takeoff', 'daily-logs', 'team', 'contracts', 'clients', 'finance', 'timeclock'],
+            'subcontractor': ['dashboard', 'projects', 'daily-logs', 'timeclock']
         };
 
-        const userPermissions = permissions[this.currentUser.role] || [];
-        return userPermissions.includes(permission);
+        const allowed = rolePermissions[this.currentUser.role] || ['dashboard'];
+        if (allowed.includes('*')) return true;
+        return allowed.includes(permission);
+    }
+
+    getVisibleModules() {
+        const allModules = [
+            { id: 'dashboard', label: 'Dashboard', icon: 'speedometer2' },
+            { id: 'projects', label: 'Projects', icon: 'kanban' },
+            { id: 'schedule', label: 'Schedule', icon: 'calendar3' },
+            { id: 'blueprints', label: 'Blueprints', icon: 'file-earmark-image' },
+            { id: 'takeoff', label: 'Takeoff', icon: 'calculator' },
+            { id: 'daily-logs', label: 'Daily Logs', icon: 'journal-text' },
+            { id: 'team', label: 'Team', icon: 'person-badge' },
+            { id: 'finance', label: 'Accounting', icon: 'currency-dollar' },
+            { id: 'contracts', label: 'Contracts', icon: 'file-earmark-text' },
+            { id: 'clients', label: 'Clients', icon: 'people' },
+            { id: 'timeclock', label: 'Time Clock', icon: 'clock-history' }
+        ];
+
+        return allModules.filter(m => this.hasPermission(m.id));
     }
 
     demoLogin() {

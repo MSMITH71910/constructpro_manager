@@ -149,30 +149,33 @@ class ConstructProApp {
     }
 
     updateNavbarWithUser() {
-        if (!this.currentUser) return;
+        if (!this.currentUser || !window.authManager) return;
         
-        // Add Admin link if user is contractor/admin
-        if (this.currentUser.role === 'contractor' || this.currentUser.role === 'admin') {
-            const navbarNav = document.querySelector('.navbar-nav');
-            if (navbarNav && !document.querySelector('[data-module="admin"]')) {
-                const adminBtn = document.createElement('button');
-                adminBtn.className = 'btn btn-link nav-link px-3 nav-btn text-warning';
-                adminBtn.setAttribute('data-module', 'admin');
-                adminBtn.innerHTML = '<i class="bi bi-shield-lock"></i> Admin';
-                adminBtn.onclick = () => this.loadModule('admin');
-                navbarNav.appendChild(adminBtn);
-            }
+        const navbarNav = document.querySelector('.navbar-nav');
+        if (!navbarNav) return;
+
+        // Clear existing module buttons (keep them for now and just hide/show?)
+        // Better to rebuild them to match getVisibleModules()
+        const visibleModules = window.authManager.getVisibleModules();
+        
+        let navHtml = visibleModules.map(module => `
+            <button class="btn btn-link nav-link px-3 nav-btn" data-module="${module.id}" onclick="app.loadModule('${module.id}')">
+                <i class="bi bi-${module.icon}"></i> ${module.label}
+            </button>
+        `).join('');
+
+        // Add Admin link if user has permission
+        if (this.currentUser.role === 'admin' || this.currentUser.role === 'owner') {
+            navHtml += `
+                <button class="btn btn-link nav-link px-3 nav-btn text-warning" data-module="admin" onclick="app.loadModule('admin')">
+                    <i class="bi bi-shield-lock"></i> Admin
+                </button>
+            `;
         }
+
+        navbarNav.innerHTML = navHtml;
         
         // Add user dropdown to navbar
-        const navbarNav = document.querySelector('.navbar-nav');
-        
-        // Remove existing user dropdown if present
-        const existingDropdown = document.getElementById('userDropdown');
-        if (existingDropdown) {
-            existingDropdown.remove();
-        }
-        
         const userDropdownHtml = `
             <div class="dropdown ms-3" id="userDropdown">
                 <button class="btn btn-link nav-link dropdown-toggle d-flex align-items-center" 
@@ -190,13 +193,13 @@ class ConstructProApp {
                             <span class="badge bg-primary-subtle text-primary mt-1">${this.getRoleDisplayName(this.currentUser.role)}</span>
                         </div>
                     </li>
-                    <li><a class="dropdown-item py-2" href="#" onclick="app.showUserProfile()">
+                    <li><a class="dropdown-item py-2" href="#" onclick="app.showSettings('profile')">
                         <i class="bi bi-person me-2"></i> Profile Settings
                     </a></li>
-                    <li><a class="dropdown-item py-2" href="#" onclick="app.showCompanySettings()">
+                    <li><a class="dropdown-item py-2" href="#" onclick="app.showSettings('company')">
                         <i class="bi bi-building me-2"></i> Company Settings
                     </a></li>
-                    <li><a class="dropdown-item py-2" href="#" onclick="app.showAppSettings()">
+                    <li><a class="dropdown-item py-2" href="#" onclick="app.showSettings('app')">
                         <i class="bi bi-gear me-2"></i> App Settings
                     </a></li>
                     <li><hr class="dropdown-divider"></li>
@@ -212,6 +215,8 @@ class ConstructProApp {
 
     getRoleDisplayName(role) {
         const roleNames = {
+            'admin': 'Administrator',
+            'owner': 'Company Owner',
             'contractor': 'General Contractor',
             'subcontractor': 'Subcontractor',
             'demolition': 'Demolition Contractor',
@@ -220,6 +225,10 @@ class ConstructProApp {
             'engineer': 'Engineer',
             'project_manager': 'Project Manager',
             'estimator': 'Estimator',
+            'superintendent': 'Superintendent',
+            'field_manager': 'Field Manager',
+            'foreman': 'Foreman',
+            'laborer': 'General Laborer',
             'other': 'Construction Professional'
         };
         return roleNames[role] || role;
@@ -350,7 +359,15 @@ class ConstructProApp {
                                         </div>
                                         <div class="col-12">
                                             <label class="form-label fw-bold small">Role / Position</label>
-                                            <input type="text" class="form-control" id="teamMemberRole" placeholder="e.g., Foreman, Site Supervisor" required>
+                                            <select class="form-select" id="teamMemberRole" required>
+                                                <option value="project_manager">Project Manager</option>
+                                                <option value="estimator">Estimator</option>
+                                                <option value="superintendent">Superintendent</option>
+                                                <option value="field_manager">Field Manager</option>
+                                                <option value="foreman">Foreman</option>
+                                                <option value="laborer">General Laborer</option>
+                                                <option value="subcontractor">Subcontractor</option>
+                                            </select>
                                         </div>
                                         <div class="col-12">
                                             <label class="form-label fw-bold small">Employment Type</label>
@@ -624,9 +641,12 @@ class ConstructProApp {
                                         <div class="col-12">
                                             <label class="form-label fw-bold small">Role</label>
                                             <select class="form-select" id="adminUserRole" required>
-                                                <option value="contractor">General Contractor (Admin)</option>
+                                                <option value="owner">Company Owner (Admin)</option>
                                                 <option value="project_manager">Project Manager</option>
                                                 <option value="estimator">Estimator</option>
+                                                <option value="superintendent">Superintendent</option>
+                                                <option value="field_manager">Field Manager</option>
+                                                <option value="contractor">General Contractor</option>
                                                 <option value="subcontractor">Subcontractor</option>
                                             </select>
                                         </div>
@@ -828,16 +848,6 @@ class ConstructProApp {
                 <div class="col-md-4"><div class="p-3 bg-light rounded shadow-sm"><h6>Completed</h6><div class="card p-2 mb-2 border-0 shadow-sm">Site Mobilization</div></div></div>
             </div>
         `;
-    }
-
-    showCompanySettings() {
-        // Implement company settings modal
-        this.showAlert('info', 'Company settings coming soon!');
-    }
-
-    showAppSettings() {
-        // Implement app settings modal
-        this.showAlert('info', 'App settings coming soon!');
     }
 
     // Alert system for user feedback
@@ -1111,12 +1121,438 @@ class ConstructProApp {
             case 'reports':
                 this.loadReports();
                 break;
+            case 'finance':
+                this.loadFinance();
+                break;
+            case 'timeclock':
+                this.loadTimeClock();
+                break;
+            case 'settings':
+                this.loadSettings();
+                break;
             case 'admin':
                 this.loadAdmin();
                 break;
             default:
                 this.loadDashboard();
         }
+    }
+
+    loadFinance() {
+        const content = `
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-1 fw-bold"><i class="bi bi-currency-dollar text-success"></i> Financial Management</h2>
+                            <p class="text-muted">Track Accounts Payable (AP) and Accounts Receivable (AR)</p>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" onclick="app.showAlert('info', 'New invoice/expense wizard')">
+                                <i class="bi bi-plus-lg me-1"></i> New Transaction
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4 mb-4">
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm border-start border-4 border-primary">
+                        <div class="card-body p-4">
+                            <h6 class="text-muted small text-uppercase fw-bold">Total Accounts Receivable</h6>
+                            <h2 class="mb-0 fw-bold text-primary">$142,500.00</h2>
+                            <small class="text-muted">Invoices sent to clients</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm border-start border-4 border-danger">
+                        <div class="card-body p-4">
+                            <h6 class="text-muted small text-uppercase fw-bold">Total Accounts Payable</h6>
+                            <h2 class="mb-0 fw-bold text-danger">$84,200.00</h2>
+                            <small class="text-muted">Unpaid bills to vendors/subs</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3">
+                    <ul class="nav nav-pills card-header-pills" id="financeTabs">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#" onclick="app.loadFinanceView('ar')">Receivables (Invoices)</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" onclick="app.loadFinanceView('ap')">Payables (Bills)</a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body p-0" id="financeViewContainer">
+                    <!-- Finance data table will be loaded here -->
+                </div>
+            </div>
+        `;
+        document.getElementById('mainContent').innerHTML = content;
+        this.loadFinanceView('ar');
+    }
+
+    loadFinanceView(viewType) {
+        const container = document.getElementById('financeViewContainer');
+        if (!container) return;
+
+        // Update pills
+        document.querySelectorAll('#financeTabs .nav-link').forEach(link => {
+            link.classList.remove('active');
+            if ((viewType === 'ar' && link.textContent.includes('Receivables')) || 
+                (viewType === 'ap' && link.textContent.includes('Payables'))) {
+                link.classList.add('active');
+            }
+        });
+
+        let tableHtml = '';
+        if (viewType === 'ar') {
+            tableHtml = `
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4">Invoice #</th>
+                                <th>Client</th>
+                                <th>Project</th>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th class="text-end pe-4">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="ps-4 fw-bold">INV-2023-001</td>
+                                <td>Horizon Properties</td>
+                                <td>Modern Residential Complex</td>
+                                <td>Oct 15, 2023</td>
+                                <td class="fw-bold">$45,000.00</td>
+                                <td><span class="badge bg-success-subtle text-success border">PAID</span></td>
+                                <td class="text-end pe-4">
+                                    <button class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="ps-4 fw-bold">INV-2023-002</td>
+                                <td>City Developers</td>
+                                <td>Downtown Office Reno</td>
+                                <td>Oct 20, 2023</td>
+                                <td class="fw-bold">$97,500.00</td>
+                                <td><span class="badge bg-warning-subtle text-warning border">SENT</span></td>
+                                <td class="text-end pe-4">
+                                    <button class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } else {
+            tableHtml = `
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4">Bill #</th>
+                                <th>Vendor / Sub</th>
+                                <th>Project</th>
+                                <th>Due Date</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th class="text-end pe-4">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="ps-4 fw-bold">BILL-9942</td>
+                                <td>Apex Plumbing Inc.</td>
+                                <td>Modern Residential Complex</td>
+                                <td>Nov 05, 2023</td>
+                                <td class="fw-bold text-danger">$12,400.00</td>
+                                <td><span class="badge bg-danger-subtle text-danger border">OVERDUE</span></td>
+                                <td class="text-end pe-4">
+                                    <button class="btn btn-sm btn-primary">Pay Bill</button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="ps-4 fw-bold">BILL-9950</td>
+                                <td>Elite Masonry</td>
+                                <td>Downtown Office Reno</td>
+                                <td>Nov 15, 2023</td>
+                                <td class="fw-bold text-danger">$8,250.00</td>
+                                <td><span class="badge bg-primary-subtle text-primary border">UNPAID</span></td>
+                                <td class="text-end pe-4">
+                                    <button class="btn btn-sm btn-outline-primary">Pay Bill</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+        container.innerHTML = tableHtml;
+    }
+
+    loadTimeClock() {
+        const content = `
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-1 fw-bold"><i class="bi bi-clock-history text-primary"></i> Time Clock</h2>
+                            <p class="text-muted">Field attendance and labor tracking</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-lg-4">
+                    <div class="card border-0 shadow-sm mb-4">
+                        <div class="card-body p-4 text-center">
+                            <h5 class="fw-bold mb-4">Active Session</h5>
+                            <div class="display-4 fw-bold mb-4" id="clockTimer">00:00:00</div>
+                            <p class="text-muted small mb-4">Shift started at: Not Clocked In</p>
+                            <div class="d-grid gap-3">
+                                <button class="btn btn-success btn-lg py-3 shadow-sm" id="btnClockIn" onclick="app.handleClockAction('in')">
+                                    <i class="bi bi-play-fill me-2"></i> CLOCK IN
+                                </button>
+                                <button class="btn btn-danger btn-lg py-3 shadow-sm d-none" id="btnClockOut" onclick="app.handleClockAction('out')">
+                                    <i class="bi bi-stop-fill me-2"></i> CLOCK OUT
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white py-3 border-bottom">
+                            <h6 class="mb-0 fw-bold">Weekly Summary</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
+                                <span>Total Hours:</span>
+                                <span class="fw-bold">38.5 hrs</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
+                                <span>Overtime:</span>
+                                <span class="fw-bold text-warning">0.0 hrs</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Gross Labor Value:</span>
+                                <span class="fw-bold text-success">$1,732.50</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-8">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header bg-white py-3 border-bottom">
+                            <h5 class="mb-0 fw-bold">Recent Time Entries</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="bg-light">
+                                        <tr>
+                                            <th class="ps-4">Date</th>
+                                            <th>Project</th>
+                                            <th>Clock In</th>
+                                            <th>Clock Out</th>
+                                            <th>Duration</th>
+                                            <th class="text-end pe-4">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td class="ps-4 fw-bold">Oct 26, 2023</td>
+                                            <td>Modern Residential Complex</td>
+                                            <td>07:00 AM</td>
+                                            <td>03:30 PM</td>
+                                            <td>8.5 hrs</td>
+                                            <td class="text-end pe-4"><span class="badge bg-success-subtle text-success">APPROVED</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td class="ps-4 fw-bold">Oct 25, 2023</td>
+                                            <td>Modern Residential Complex</td>
+                                            <td>07:05 AM</td>
+                                            <td>04:00 PM</td>
+                                            <td>8.9 hrs</td>
+                                            <td class="text-end pe-4"><span class="badge bg-success-subtle text-success">APPROVED</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('mainContent').innerHTML = content;
+    }
+
+    handleClockAction(action) {
+        if (action === 'in') {
+            document.getElementById('btnClockIn').classList.add('d-none');
+            document.getElementById('btnClockOut').classList.remove('d-none');
+            this.showAlert('success', 'Clocked in successfully! Work hard, stay safe.');
+        } else {
+            document.getElementById('btnClockOut').classList.add('d-none');
+            document.getElementById('btnClockIn').classList.remove('d-none');
+            this.showAlert('info', 'Clocked out. Great work today!');
+        }
+    }
+
+    loadSettings() {
+        const view = this.currentSettingsView || 'profile';
+        const content = `
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-1 fw-bold"><i class="bi bi-gear text-secondary"></i> System Settings</h2>
+                            <p class="text-muted">Manage your personal and company preferences</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-lg-3">
+                    <div class="list-group list-group-flush border rounded shadow-sm">
+                        <a href="#" class="list-group-item list-group-item-action py-3 ${view === 'profile' ? 'active' : ''}" onclick="app.showSettings('profile')">
+                            <i class="bi bi-person me-2"></i> My Profile
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action py-3 ${view === 'company' ? 'active' : ''}" onclick="app.showSettings('company')">
+                            <i class="bi bi-building me-2"></i> Company Info
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action py-3 ${view === 'app' ? 'active' : ''}" onclick="app.showSettings('app')">
+                            <i class="bi bi-cpu me-2"></i> Application
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action py-3 ${view === 'notifications' ? 'active' : ''}" onclick="app.showSettings('notifications')">
+                            <i class="bi bi-bell me-2"></i> Notifications
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action py-3 text-danger" onclick="app.logout()">
+                            <i class="bi bi-box-arrow-right me-2"></i> Sign Out
+                        </a>
+                    </div>
+                </div>
+                <div class="col-lg-9">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-4" id="settingsViewContainer">
+                            <!-- Settings content loads here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('mainContent').innerHTML = content;
+        this.renderSettingsView(view);
+    }
+
+    showSettings(view) {
+        this.currentSettingsView = view;
+        this.loadModule('settings');
+    }
+
+    renderSettingsView(view) {
+        const container = document.getElementById('settingsViewContainer');
+        if (!container) return;
+
+        let settingsHtml = '';
+        switch(view) {
+            case 'profile':
+                settingsHtml = `
+                    <h5 class="fw-bold mb-4">My Profile Settings</h5>
+                    <form id="profileSettingsForm">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">First Name</label>
+                                <input type="text" class="form-control" value="${this.currentUser?.firstName || ''}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Last Name</label>
+                                <input type="text" class="form-control" value="${this.currentUser?.lastName || ''}">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Email Address</label>
+                                <input type="email" class="form-control" value="${this.currentUser?.email || ''}">
+                            </div>
+                            <div class="col-12 mt-4">
+                                <button type="button" class="btn btn-primary px-4" onclick="app.showAlert('success', 'Profile updated successfully!')">Save Profile</button>
+                            </div>
+                        </div>
+                    </form>
+                `;
+                break;
+            case 'company':
+                settingsHtml = `
+                    <h5 class="fw-bold mb-4">Company Information</h5>
+                    <form id="companySettingsForm">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Company Name</label>
+                                <input type="text" class="form-control" value="${this.currentUser?.company || 'ConstructPro Professional'}">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Business License #</label>
+                                <input type="text" class="form-control" value="GC-12345678-TX">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Tax ID (EIN)</label>
+                                <input type="text" class="form-control" value="**-***5678">
+                            </div>
+                            <div class="col-12 mt-4">
+                                <button type="button" class="btn btn-primary px-4" onclick="app.showAlert('success', 'Company information saved!')">Update Company</button>
+                            </div>
+                        </div>
+                    </form>
+                `;
+                break;
+            case 'app':
+                settingsHtml = `
+                    <h5 class="fw-bold mb-4">Application Preferences</h5>
+                    <div class="list-group list-group-flush">
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            <div>
+                                <h6 class="mb-1">Dark Mode</h6>
+                                <p class="text-muted small mb-0">Switch to a dark UI for low-light environments</p>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="darkModeSwitch">
+                            </div>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            <div>
+                                <h6 class="mb-1">Automatic Backups</h6>
+                                <p class="text-muted small mb-0">Daily cloud backups of project data</p>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" checked>
+                            </div>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            <div>
+                                <h6 class="mb-1">Local Storage Mode</h6>
+                                <p class="text-muted small mb-0">Always store data locally even when offline</p>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" checked>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                break;
+            default:
+                settingsHtml = `<p class="text-muted">Coming soon...</p>`;
+        }
+        container.innerHTML = settingsHtml;
     }
 
     loadAdmin() {
