@@ -1333,7 +1333,14 @@ class ConstructProApp {
                     <div class="card border-0 shadow-sm overflow-hidden" style="border-radius: 15px;">
                         <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
                             <h5 class="mb-0 fw-bold">Employee Ledger & Compensation</h5>
-                            <button class="btn btn-sm btn-outline-primary" onclick="app.loadModule('team')">Manage Team</button>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-primary" onclick="app.loadModule('team')">View Directory</button>
+                                ${window.authManager && window.authManager.hasPermission('admin') ? `
+                                    <button class="btn btn-sm btn-success shadow-sm fw-bold" onclick="app.showAddAdminUserModal()">
+                                        <i class="bi bi-person-plus-fill me-1"></i> New Employee
+                                    </button>
+                                ` : ''}
+                            </div>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
@@ -1360,7 +1367,14 @@ class ConstructProApp {
                                                 <td class="fw-bold text-dark">$${parseFloat(u.payRate || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                                                 <td><small class="text-muted">${u.hireDate || 'N/A'}</small></td>
                                                 <td class="text-end pe-4">
-                                                    <button class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold" onclick="app.showEditUserModal('${u.id}')">Adjust Wage</button>
+                                                    <div class="btn-group">
+                                                        <button class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold" onclick="app.showEditUserModal('${u.id}')">Adjust Wage</button>
+                                                        ${u.id !== this.currentUser.id ? `
+                                                            <button class="btn btn-sm btn-link text-danger ms-1" onclick="app.deleteAdminUser('${u.id}')" title="Remove Employee">
+                                                                <i class="bi bi-trash-fill"></i>
+                                                            </button>
+                                                        ` : ''}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         `).join('')}
@@ -2539,6 +2553,12 @@ class ConstructProApp {
             
             this.showAlert('success', `Team member account created for ${data.firstName}`);
             this.addActivityFeedItem(this.currentUser.firstName, `added ${data.firstName} ${data.lastName} to the team`, 'team');
+            
+            // Auto-welcome message
+            if (window.messageManager) {
+                window.messageManager.sendMessage(newUser.id, this.currentUser.id, `Hello! I've just been added to the team as ${this.getRoleDisplayName(newUser.role)}. Looking forward to working together!`);
+            }
+
             const modalElement = document.getElementById('addAdminUserModal');
             if (modalElement) {
                 const modal = bootstrap.Modal.getInstance(modalElement);
@@ -4043,12 +4063,12 @@ class ConstructProApp {
                 </div>
                 <div class="col-auto">
                     <div class="d-flex gap-2">
-                        <button class="btn btn-outline-primary" onclick="app.showRecentChats()">
-                            <i class="bi bi-chat-dots me-1"></i> Messages
+                        <button class="btn btn-outline-primary shadow-sm" onclick="app.showRecentChats()">
+                            <i class="bi bi-chat-dots-fill me-1"></i> Messenger
                         </button>
                         ${window.authManager && window.authManager.hasPermission('admin') ? `
-                        <button class="btn btn-primary shadow-sm px-4" onclick="app.showAddAdminUserModal()">
-                            <i class="bi bi-person-plus-fill me-1"></i> Add Member
+                        <button class="btn btn-success shadow-sm px-4 fw-bold" onclick="app.showAddAdminUserModal()">
+                            <i class="bi bi-person-plus-fill me-1"></i> New Employee
                         </button>
                         ` : ''}
                     </div>
