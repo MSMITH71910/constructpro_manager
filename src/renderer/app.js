@@ -23,6 +23,7 @@ class ConstructProApp {
         // Check if user is authenticated before initializing app
         setTimeout(() => {
             if (window.authManager && window.authManager.isUserAuthenticated()) {
+                this.currentUser = window.authManager.getCurrentUser();
                 this.initializeApp();
             }
         }, 100);
