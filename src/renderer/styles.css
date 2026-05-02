@@ -307,33 +307,136 @@ body.auth-mode .main-content {
 .status-rejected { background-color: #dc3545; }
 
 /* Responsive Design */
-@media (max-width: 768px) {
-    .sidebar {
+@media (max-width: 991.98px) {
+    .navbar-collapse {
+        background-color: var(--primary-color);
+        padding: 1rem;
+        border-radius: 0 0 15px 15px;
+        box-shadow: 0 10px 15px rgba(0,0,0,0.1);
         position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        z-index: 1050;
-        transition: left 0.3s ease;
-    }
-    
-    .sidebar.show {
+        top: 60px;
         left: 0;
-    }
-    
-    .main-content {
         width: 100%;
     }
     
     .nav-btn {
-        margin-bottom: 0.25rem;
+        text-align: left;
+        padding: 10px 15px !important;
+        width: 100%;
+        margin-right: 0 !important;
+        margin-bottom: 5px;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
     }
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-    width: 8px;
+@media (max-width: 768px) {
+    body {
+        padding-top: 60px;
+    }
+
+    .main-content {
+        padding: 1rem;
+    }
+    
+    .welcome-hero {
+        padding: 1.5rem;
+    }
+    
+    .display-4 {
+        font-size: 2rem;
+    }
+}
+
+/* Fix for mobile horizontal overflow */
+.table-responsive {
+    border-radius: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Chat bubble styling */
+#chatMessages {
+    scrollbar-width: thin;
+}
+
+#chatMessages::-webkit-scrollbar {
+    width: 5px;
+}
+
+#chatMessages::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 10px;
+}
+
+/* Enterprise UI Components */
+.card-stats {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px;
+}
+
+.card-stats:hover {
+    transform: translateY(-5px);
+}
+
+.finance-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+}
+
+.timer-circle {
+    width: 180px;
+    height: 180px;
+    border: 8px solid #e9ecef;
+    border-top: 8px solid var(--primary-color);
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    animation: rotate-timer 2s linear infinite;
+    animation-play-state: paused;
+}
+
+.timer-circle.active {
+    animation-play-state: running;
+}
+
+@keyframes rotate-timer {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.clock-display {
+    font-family: 'Monaco', 'Consolas', monospace;
+    font-size: 2.5rem;
+    font-weight: 700;
+}
+
+/* Connecteam Style Layouts */
+.mobile-app-shell {
+    max-width: 400px;
+    margin: 0 auto;
+    border: 12px solid #333;
+    border-radius: 30px;
+    height: 700px;
+    overflow: hidden;
+    background: #f8f9fa;
+    position: relative;
+}
+
+.list-group-item-action {
+    border-left: 4px solid transparent;
+}
+
+.list-group-item-action.active {
+    border-left-color: var(--primary-color);
+    background-color: #f0f7ff;
+    color: var(--primary-color);
 }
 
 ::-webkit-scrollbar-track {

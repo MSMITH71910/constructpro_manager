@@ -16,7 +16,10 @@ class DataManager {
             labor: [],
             industries: [],
             schedules: [],
-            daily_logs: []
+            daily_logs: [],
+            finance: [],
+            time_entries: [],
+            subcontractors: []
         };
         this.currentProject = null;
         this.init();
@@ -61,7 +64,10 @@ class DataManager {
             labor: [],
             industries: [],
             schedules: [],
-            daily_logs: []
+            daily_logs: [],
+            finance: [],
+            time_entries: [],
+            subcontractors: []
         };
     }
 
@@ -133,6 +139,25 @@ class DataManager {
                 status: 'approved',
                 created_at: new Date().toISOString()
             });
+
+            // Add demo finance data
+            this.data.finance = [
+                { id: 401, type: 'ar', reference: 'INV-2023-001', entity: 'Horizon Properties', project_id: 101, project_name: 'Modern Residential Complex', date: '2023-10-15', amount: 45000, status: 'paid' },
+                { id: 402, type: 'ar', reference: 'INV-2023-002', entity: 'City Developers', project_id: 0, project_name: 'Downtown Office Reno', date: '2023-10-20', amount: 97500, status: 'sent' },
+                { id: 403, type: 'ap', reference: 'BILL-9942', entity: 'Apex Plumbing Inc.', project_id: 101, project_name: 'Modern Residential Complex', date: '2023-11-05', amount: 12400, status: 'overdue' },
+                { id: 404, type: 'ap', reference: 'BILL-9950', entity: 'Elite Masonry', project_id: 0, project_name: 'Downtown Office Reno', date: '2023-11-15', amount: 8250, status: 'unpaid' }
+            ];
+
+            // Add demo subcontractors
+            this.data.subcontractors = [
+                { id: 501, company: 'Apex Plumbing Inc.', trade: 'Plumbing', contact: 'Mike Apex', email: 'mike@apexplumbing.com' },
+                { id: 502, company: 'Elite Masonry', trade: 'Masonry', contact: 'Dan Brick', email: 'dan@elitemasonry.com' }
+            ];
+
+            // Save all demo data
+            for (const dataType of Object.keys(this.data)) {
+                localStorage.setItem(this.getUserDataKey(dataType), JSON.stringify(this.data[dataType]));
+            }
         }
     }
 
@@ -160,6 +185,13 @@ class DataManager {
 
     async saveData(dataType, item) {
         try {
+            if (!item) {
+                // If no item, just save the whole collection to localStorage
+                localStorage.setItem(this.getUserDataKey(dataType), JSON.stringify(this.data[dataType]));
+                this.notifyDataChange(dataType);
+                return this.data[dataType];
+            }
+
             // Ensure the item has proper relationships
             item = this.addRelationships(dataType, item);
             

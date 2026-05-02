@@ -14,6 +14,8 @@ class ConstructProApp {
         this.selectedItem = null;
         this.isAppInitialized = false;
         this.currentUser = null;
+        this.clockInTime = null;
+        this.clockTimerInterval = null;
         
         this.init();
     }
@@ -64,16 +66,24 @@ class ConstructProApp {
             }
         }
 
-        // Populate demo team data for profile views if not exists
-        if (window.dataManager && (!window.dataManager.data.team || window.dataManager.data.team.length === 0)) {
-            window.dataManager.data.team = [
-                { id: 'demo-1', firstName: 'John', lastName: 'Doe', email: 'john@demo.com', role: 'project_manager', company: 'Demo Construction', type: 'Full-Time' },
-                { id: 'demo-2', firstName: 'Sarah', lastName: 'Miller', email: 'sarah@demo.com', role: 'site_supervisor', company: 'Demo Construction', type: 'Full-Time' },
-                { id: 'demo-3', firstName: 'Bill', lastName: 'Watts', email: 'bill@demo.com', role: 'foreman', company: 'Elite Electrical', type: 'Contractor' }
-            ];
-            window.dataManager.saveData('team');
-        }
-        
+        // Start message polling and UI listeners
+        this.updateUnreadCount();
+        window.addEventListener('newMessage', (e) => {
+            this.updateUnreadCount();
+            
+            // Notification if not in chat
+            const chatModal = document.getElementById('chatModal');
+            if (!chatModal || !chatModal.classList.contains('show')) {
+                const fromUser = window.authManager.users.find(u => u.id === e.detail.fromId);
+                if (fromUser && e.detail.toId === this.currentUser.id) {
+                    this.showAlert('info', `New message from ${fromUser.firstName}: "${e.detail.text.substring(0, 30)}${e.detail.text.length > 30 ? '...' : ''}"`);
+                }
+            } else {
+                const otherId = e.detail.fromId === this.currentUser.id ? e.detail.toId : e.detail.fromId;
+                this.loadChatMessages(otherId);
+            }
+        });
+
         // ALWAYS hide loading screen first, even if there are errors
         this.hideLoadingScreen();
         
@@ -108,6 +118,16 @@ class ConstructProApp {
             this.setupEventListeners();
             this.setupModalListeners();
             await this.loadProjects(); // Load projects for global project selector
+
+            // Restore clock state from localStorage
+            const storedClockIn = localStorage.getItem('constructpro_clock_in');
+            if (storedClockIn) {
+                this.clockInTime = parseInt(storedClockIn);
+                this.activeClockProjectId = localStorage.getItem('constructpro_clock_project_id');
+                this.activeClockProjectName = localStorage.getItem('constructpro_clock_project_name');
+                this.activeClockTask = localStorage.getItem('constructpro_clock_task');
+                this.startClockTimer();
+            }
         } catch (error) {
             console.error('Error during app initialization:', error);
         }
@@ -122,10 +142,32 @@ class ConstructProApp {
     showMainInterface() {
         // Show navigation and sidebar
         document.querySelector('.navbar').style.display = 'block';
-        document.querySelector('.sidebar').style.display = 'block';
+        if (window.innerWidth >= 992) {
+            document.querySelector('.sidebar').style.display = 'block';
+        }
         
         // Update navbar with user info
         this.updateNavbarWithUser();
+    }
+
+    toggleSidebar() {
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) {
+            sidebar.classList.toggle('show');
+            if (sidebar.classList.contains('show')) {
+                sidebar.style.display = 'block';
+                sidebar.style.position = 'fixed';
+                sidebar.style.top = '60px';
+                sidebar.style.left = '0';
+                sidebar.style.width = '260px';
+                sidebar.style.height = 'calc(100vh - 60px)';
+                sidebar.style.zIndex = '1040';
+            } else {
+                if (window.innerWidth < 992) {
+                    sidebar.style.display = 'none';
+                }
+            }
+        }
     }
 
     hideMainInterface() {
@@ -555,57 +597,63 @@ class ConstructProApp {
         let user = null;
         if (userId === 'current') {
             user = this.currentUser;
-        } else if (window.dataManager && window.dataManager.data.team) {
-            user = window.dataManager.data.team.find(t => t.id === userId);
+        } else if (window.authManager) {
+            user = window.authManager.users.find(u => u.id === userId);
         }
 
         if (!user) {
-            user = { firstName: 'John', lastName: 'Doe', email: 'john@demo.com', role: 'project_manager', company: 'Demo Construction' };
+            this.showAlert('danger', 'User not found');
+            return;
         }
 
         const initials = (user.firstName?.[0] || '') + (user.lastName?.[0] || '');
 
-        if (!document.getElementById('userProfileModal')) {
-            const modalHtml = `
-                <div class="modal fade" id="userProfileModal" tabindex="-1">
-                    <div class="modal-dialog">
-                        <div class="modal-content border-0 shadow-lg">
-                            <div class="modal-header bg-primary text-white">
-                                <h5 class="modal-title fw-bold"><i class="bi bi-person-circle me-2"></i> User Profile</h5>
-                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        const modalHtml = `
+            <div class="modal fade" id="userProfileModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-person-circle me-2"></i> User Profile</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-4 text-center">
+                            <div class="mb-4">
+                                <div class="bg-primary-subtle text-primary rounded-circle d-inline-flex p-3" style="width: 100px; height: 100px; align-items: center; justify-content: center;">
+                                    <h2 class="mb-0 fw-bold">${initials}</h2>
+                                </div>
                             </div>
-                            <div class="modal-body p-4 text-center">
-                                <div class="mb-4">
-                                    <div class="bg-primary-subtle text-primary rounded-circle d-inline-flex p-3" style="width: 100px; height: 100px; align-items: center; justify-content: center;">
-                                        <h2 class="mb-0 fw-bold" id="profileInitials">${initials}</h2>
+                            <h4 class="fw-bold mb-1">${user.firstName} ${user.lastName}</h4>
+                            <p class="text-muted">${this.getRoleDisplayName(user.role)}</p>
+                            <hr>
+                            <div class="text-start">
+                                <p class="mb-2"><strong>Email:</strong> <span>${user.email}</span></p>
+                                <p class="mb-2"><strong>Company:</strong> <span>${user.company || 'N/A'}</span></p>
+                                <p class="mb-2"><strong>Role:</strong> <span>${this.getRoleDisplayName(user.role)}</span></p>
+                                <p class="mb-2"><strong>Status:</strong> <span class="badge ${user.isActive ? 'bg-success' : 'bg-danger'}">${user.isActive ? 'Active' : 'Inactive'}</span></p>
+                                
+                                ${user.permissions && user.permissions.length > 0 ? `
+                                    <div class="mt-3">
+                                        <strong>Special Permissions:</strong>
+                                        <div class="d-flex flex-wrap gap-1 mt-1">
+                                            ${user.permissions.map(p => `<span class="badge bg-info-subtle text-info">${p}</span>`).join('')}
+                                        </div>
                                     </div>
-                                </div>
-                                <h4 class="fw-bold mb-1" id="profileFullName">${user.firstName} ${user.lastName}</h4>
-                                <p class="text-muted" id="profileRoleDisplay">${this.getRoleDisplayName(user.role)}</p>
-                                <hr>
-                                <div class="text-start">
-                                    <p class="mb-2"><strong>Email:</strong> <span id="profileEmail">${user.email}</span></p>
-                                    <p class="mb-2"><strong>Company:</strong> <span id="profileCompany">${user.company || 'N/A'}</span></p>
-                                    <p class="mb-2"><strong>Role:</strong> <span id="profileRoleDetail">${user.role}</span></p>
-                                </div>
+                                ` : ''}
                             </div>
-                            <div class="modal-footer bg-light">
-                                <button type="button" class="btn btn-outline-primary w-100" onclick="app.showAlert('info', 'Profile editing coming soon')"><i class="bi bi-pencil me-2"></i> Edit Profile</button>
-                            </div>
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="app.showEditUserModal('${user.id}')"><i class="bi bi-pencil me-2"></i> Edit Member Settings</button>
                         </div>
                     </div>
                 </div>
-            `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-        } else {
-            // Update existing modal
-            document.getElementById('profileInitials').textContent = initials;
-            document.getElementById('profileFullName').textContent = `${user.firstName} ${user.lastName}`;
-            document.getElementById('profileRoleDisplay').textContent = this.getRoleDisplayName(user.role);
-            document.getElementById('profileEmail').textContent = user.email;
-            document.getElementById('profileCompany').textContent = user.company || 'N/A';
-            document.getElementById('profileRoleDetail').textContent = user.role;
-        }
+            </div>
+        `;
+        
+        // Remove existing modal if any
+        const existing = document.getElementById('userProfileModal');
+        if (existing) existing.remove();
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
         new bootstrap.Modal(document.getElementById('userProfileModal')).show();
     }
 
@@ -706,7 +754,88 @@ class ConstructProApp {
     }
 
     addMilestone() {
-        this.showAlert('info', 'Add Milestone / Task wizard is now active!');
+        const modalId = 'addTaskModal';
+        let modal = document.getElementById(modalId);
+        if (modal) modal.remove();
+
+        const modalHtml = `
+            <div class="modal fade" id="${modalId}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-list-task me-2"></i> Add Schedule Task</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form id="addTaskForm">
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Task Name</label>
+                                    <input type="text" class="form-control" name="name" required placeholder="e.g., Foundation Pour">
+                                </div>
+                                <div class="row g-3 mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label small fw-bold">Start Date</label>
+                                        <input type="date" class="form-control" name="start" value="${new Date().toISOString().split('T')[0]}" required>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small fw-bold">End Date</label>
+                                        <input type="date" class="form-control" name="end" value="${new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0]}" required>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Assigned To</label>
+                                    <select class="form-select" name="assignee">
+                                        <option value="unassigned">Unassigned</option>
+                                        ${window.authManager.users.map(u => `<option value="${u.id}">${u.firstName} ${u.lastName}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Status</label>
+                                    <select class="form-select" name="status">
+                                        <option value="pending">Pending</option>
+                                        <option value="in_progress">In Progress</option>
+                                        <option value="completed">Completed</option>
+                                    </select>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary px-4" onclick="app.saveNewTask()">Create Task</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById(modalId)).show();
+    }
+
+    saveNewTask() {
+        const form = document.getElementById('addTaskForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        if (!this.currentProject) {
+            this.showAlert('danger', 'Please select a project first');
+            return;
+        }
+
+        const task = {
+            id: Date.now(),
+            projectId: this.currentProject.id,
+            ...data,
+            progress: 0
+        };
+
+        if (window.dataManager) {
+            if (!window.dataManager.data.tasks) window.dataManager.data.tasks = [];
+            window.dataManager.data.tasks.push(task);
+            window.dataManager.saveData('tasks');
+            this.showAlert('success', `Task "${data.name}" added to schedule`);
+            bootstrap.Modal.getInstance(document.getElementById('addTaskModal')).hide();
+            this.loadSchedule();
+        }
     }
 
     showScheduleView(viewType) {
@@ -1076,6 +1205,15 @@ class ConstructProApp {
         const navBtn = document.querySelector(`[data-module="${moduleName}"]`);
         if (navBtn) navBtn.classList.add('active');
 
+        // Close sidebar on mobile
+        if (window.innerWidth < 992) {
+            const sidebar = document.querySelector('.sidebar');
+            if (sidebar) {
+                sidebar.classList.remove('show');
+                sidebar.style.display = 'none';
+            }
+        }
+
         this.currentModule = moduleName;
         const mainContent = document.getElementById('mainContent');
 
@@ -1139,16 +1277,28 @@ class ConstructProApp {
     }
 
     loadFinance() {
+        const transactions = window.dataManager ? window.dataManager.data.finance : [];
+        const arTransactions = transactions.filter(t => t.type === 'ar');
+        const apTransactions = transactions.filter(t => t.type === 'ap');
+        
+        const arTotal = arTransactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+        const apTotal = apTransactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+        const paidAR = arTransactions.filter(t => t.status === 'paid').reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+        const pendingAR = arTotal - paidAR;
+
         const content = `
             <div class="row mb-4">
                 <div class="col-12">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h2 class="mb-1 fw-bold"><i class="bi bi-currency-dollar text-success"></i> Financial Management</h2>
-                            <p class="text-muted">Track Accounts Payable (AP) and Accounts Receivable (AR)</p>
+                            <h2 class="mb-1 fw-bold"><i class="bi bi-wallet2 text-success"></i> Accounting & ERP</h2>
+                            <p class="text-muted">Enterprise financial management for General Contractors</p>
                         </div>
-                        <div class="btn-group">
-                            <button class="btn btn-primary" onclick="app.showAlert('info', 'New invoice/expense wizard')">
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-secondary" onclick="app.exportFinanceData()">
+                                <i class="bi bi-download me-1"></i> Export Reports
+                            </button>
+                            <button class="btn btn-primary shadow-sm" onclick="app.showNewTransactionModal()">
                                 <i class="bi bi-plus-lg me-1"></i> New Transaction
                             </button>
                         </div>
@@ -1156,40 +1306,96 @@ class ConstructProApp {
                 </div>
             </div>
 
+            <!-- Financial Health Dashboard -->
             <div class="row g-4 mb-4">
-                <div class="col-md-6">
-                    <div class="card border-0 shadow-sm border-start border-4 border-primary">
+                <div class="col-md-3">
+                    <div class="card border-0 shadow-sm card-stats h-100">
                         <div class="card-body p-4">
-                            <h6 class="text-muted small text-uppercase fw-bold">Total Accounts Receivable</h6>
-                            <h2 class="mb-0 fw-bold text-primary">$142,500.00</h2>
-                            <small class="text-muted">Invoices sent to clients</small>
+                            <div class="d-flex justify-content-between mb-3">
+                                <div class="finance-icon bg-primary-subtle text-primary">
+                                    <i class="bi bi-arrow-down-left fs-4"></i>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-success-subtle text-success">+12%</span>
+                                </div>
+                            </div>
+                            <h6 class="text-muted small text-uppercase fw-bold mb-1">Total Revenue</h6>
+                            <h3 class="fw-bold mb-0">$${arTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
+                            <p class="text-muted small mt-2 mb-0">Total of all invoices sent</p>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6">
-                    <div class="card border-0 shadow-sm border-start border-4 border-danger">
+                <div class="col-md-3">
+                    <div class="card border-0 shadow-sm card-stats h-100">
                         <div class="card-body p-4">
-                            <h6 class="text-muted small text-uppercase fw-bold">Total Accounts Payable</h6>
-                            <h2 class="mb-0 fw-bold text-danger">$84,200.00</h2>
-                            <small class="text-muted">Unpaid bills to vendors/subs</small>
+                            <div class="d-flex justify-content-between mb-3">
+                                <div class="finance-icon bg-danger-subtle text-danger">
+                                    <i class="bi bi-arrow-up-right fs-4"></i>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-danger-subtle text-danger">-5%</span>
+                                </div>
+                            </div>
+                            <h6 class="text-muted small text-uppercase fw-bold mb-1">Accounts Payable</h6>
+                            <h3 class="fw-bold mb-0 text-danger">$${apTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
+                            <p class="text-muted small mt-2 mb-0">Outstanding bills to pay</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-0 shadow-sm card-stats h-100">
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between mb-3">
+                                <div class="finance-icon bg-warning-subtle text-warning">
+                                    <i class="bi bi-hourglass-split fs-4"></i>
+                                </div>
+                            </div>
+                            <h6 class="text-muted small text-uppercase fw-bold mb-1">Pending Invoices</h6>
+                            <h3 class="fw-bold mb-0">$${pendingAR.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
+                            <div class="progress mt-3" style="height: 6px;">
+                                <div class="progress-bar bg-warning" style="width: ${(pendingAR/arTotal*100) || 0}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-0 shadow-sm card-stats h-100 bg-primary text-white">
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between mb-3">
+                                <div class="finance-icon bg-white bg-opacity-25">
+                                    <i class="bi bi-safe fs-4"></i>
+                                </div>
+                            </div>
+                            <h6 class="text-white-50 small text-uppercase fw-bold mb-1">Net Profit Margin</h6>
+                            <h3 class="fw-bold mb-0">$${(arTotal - apTotal).toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
+                            <p class="text-white-50 small mt-2 mb-0">Projected cash on hand</p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white py-3">
-                    <ul class="nav nav-pills card-header-pills" id="financeTabs">
+            <div class="card border-0 shadow-sm overflow-hidden">
+                <div class="card-header bg-white py-0 border-bottom">
+                    <ul class="nav nav-tabs border-0" id="financeTabs" role="tablist">
                         <li class="nav-item">
-                            <a class="nav-link active" href="#" onclick="app.loadFinanceView('ar')">Receivables (Invoices)</a>
+                            <a class="nav-link active py-3 px-4 fw-bold" href="#" onclick="app.loadFinanceView('ar')">
+                                <i class="bi bi-file-earmark-arrow-down me-2"></i> Receivables
+                            </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="#" onclick="app.loadFinanceView('ap')">Payables (Bills)</a>
+                            <a class="nav-link py-3 px-4 fw-bold" href="#" onclick="app.loadFinanceView('ap')">
+                                <i class="bi bi-file-earmark-arrow-up me-2"></i> Payables
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link py-3 px-4 fw-bold" href="#" onclick="app.showAlert('info', 'Budget tracking coming in next update')">
+                                <i class="bi bi-calculator me-2"></i> Job Costing
+                            </a>
                         </li>
                     </ul>
                 </div>
-                <div class="card-body p-0" id="financeViewContainer">
-                    <!-- Finance data table will be loaded here -->
+                <div class="card-body p-0 bg-light" id="financeViewContainer">
+                    <!-- Data table loads here -->
                 </div>
             </div>
         `;
@@ -1201,7 +1407,7 @@ class ConstructProApp {
         const container = document.getElementById('financeViewContainer');
         if (!container) return;
 
-        // Update pills
+        // Update active tab UI
         document.querySelectorAll('#financeTabs .nav-link').forEach(link => {
             link.classList.remove('active');
             if ((viewType === 'ar' && link.textContent.includes('Receivables')) || 
@@ -1210,182 +1416,469 @@ class ConstructProApp {
             }
         });
 
-        let tableHtml = '';
-        if (viewType === 'ar') {
-            tableHtml = `
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="bg-light">
+        const transactions = window.dataManager ? window.dataManager.data.finance.filter(t => t.type === viewType) : [];
+
+        let tableHtml = `
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 bg-white">
+                    <thead class="bg-light text-muted small text-uppercase">
+                        <tr>
+                            <th class="ps-4 py-3">${viewType === 'ar' ? 'Invoice' : 'Bill'} #</th>
+                            <th class="py-3">${viewType === 'ar' ? 'Client' : 'Vendor'}</th>
+                            <th class="py-3">Project / Job</th>
+                            <th class="py-3">Date</th>
+                            <th class="py-3">Amount</th>
+                            <th class="py-3">Status</th>
+                            <th class="text-end pe-4 py-3">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${transactions.length === 0 ? `
                             <tr>
-                                <th class="ps-4">Invoice #</th>
-                                <th>Client</th>
-                                <th>Project</th>
-                                <th>Date</th>
-                                <th>Amount</th>
-                                <th>Status</th>
-                                <th class="text-end pe-4">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td class="ps-4 fw-bold">INV-2023-001</td>
-                                <td>Horizon Properties</td>
-                                <td>Modern Residential Complex</td>
-                                <td>Oct 15, 2023</td>
-                                <td class="fw-bold">$45,000.00</td>
-                                <td><span class="badge bg-success-subtle text-success border">PAID</span></td>
-                                <td class="text-end pe-4">
-                                    <button class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></button>
+                                <td colspan="7" class="text-center py-5">
+                                    <i class="bi bi-inbox display-4 text-muted opacity-25"></i>
+                                    <p class="mt-2 text-muted">No ${viewType === 'ar' ? 'receivables' : 'payables'} found in current records</p>
                                 </td>
                             </tr>
+                        ` : ''}
+                        ${transactions.map(t => `
                             <tr>
-                                <td class="ps-4 fw-bold">INV-2023-002</td>
-                                <td>City Developers</td>
-                                <td>Downtown Office Reno</td>
-                                <td>Oct 20, 2023</td>
-                                <td class="fw-bold">$97,500.00</td>
-                                <td><span class="badge bg-warning-subtle text-warning border">SENT</span></td>
+                                <td class="ps-4 fw-bold text-primary">${t.reference}</td>
+                                <td>
+                                    <div class="fw-bold text-dark">${t.entity}</div>
+                                    <small class="text-muted">ID: TR-${t.id.toString().slice(-4)}</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">${t.project_name || 'General Overhead'}</span>
+                                </td>
+                                <td>${new Date(t.date).toLocaleDateString()}</td>
+                                <td class="fw-bold ${viewType === 'ap' ? 'text-danger' : 'text-success'}">
+                                    $${parseFloat(t.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                </td>
+                                <td>
+                                    <span class="badge ${this.getFinanceStatusBadge(t.status)} border">
+                                        ${t.status.toUpperCase()}
+                                    </span>
+                                </td>
                                 <td class="text-end pe-4">
-                                    <button class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></button>
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm btn-white border" onclick="app.viewTransaction(${t.id})" title="View Details">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        ${t.status !== 'paid' ? `
+                                            <button class="btn btn-sm btn-success border" onclick="app.payTransaction(${t.id})" title="Mark as Paid">
+                                                <i class="bi bi-check2-circle"></i>
+                                            </button>
+                                        ` : ''}
+                                        <button class="btn btn-sm btn-white border text-danger" onclick="app.deleteTransaction(${t.id})" title="Delete Record">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        } else {
-            tableHtml = `
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="bg-light">
-                            <tr>
-                                <th class="ps-4">Bill #</th>
-                                <th>Vendor / Sub</th>
-                                <th>Project</th>
-                                <th>Due Date</th>
-                                <th>Amount</th>
-                                <th>Status</th>
-                                <th class="text-end pe-4">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td class="ps-4 fw-bold">BILL-9942</td>
-                                <td>Apex Plumbing Inc.</td>
-                                <td>Modern Residential Complex</td>
-                                <td>Nov 05, 2023</td>
-                                <td class="fw-bold text-danger">$12,400.00</td>
-                                <td><span class="badge bg-danger-subtle text-danger border">OVERDUE</span></td>
-                                <td class="text-end pe-4">
-                                    <button class="btn btn-sm btn-primary">Pay Bill</button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="ps-4 fw-bold">BILL-9950</td>
-                                <td>Elite Masonry</td>
-                                <td>Downtown Office Reno</td>
-                                <td>Nov 15, 2023</td>
-                                <td class="fw-bold text-danger">$8,250.00</td>
-                                <td><span class="badge bg-primary-subtle text-primary border">UNPAID</span></td>
-                                <td class="text-end pe-4">
-                                    <button class="btn btn-sm btn-outline-primary">Pay Bill</button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        }
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
         container.innerHTML = tableHtml;
     }
 
+    getFinanceStatusBadge(status) {
+        switch(status.toLowerCase()) {
+            case 'paid': return 'bg-success-subtle text-success';
+            case 'sent': return 'bg-info-subtle text-info';
+            case 'pending': return 'bg-warning-subtle text-warning';
+            case 'overdue': return 'bg-danger-subtle text-danger';
+            default: return 'bg-light text-dark';
+        }
+    }
+
+    exportFinanceData() {
+        if (!window.dataManager) return;
+        const data = window.dataManager.data.finance;
+        const csv = "Date,Type,Reference,Entity,Project,Amount,Status\n" + 
+            data.map(t => `"${t.date}","${t.type.toUpperCase()}","${t.reference}","${t.entity}","${t.project_name}","${t.amount}","${t.status}"`).join("\n");
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.setAttribute('hidden', '');
+        a.setAttribute('href', url);
+        a.setAttribute('download', `Finance_Report_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        this.showAlert('success', 'Financial report exported successfully!');
+    }
+
+    showNewTransactionModal() {
+        const projects = window.dataManager ? window.dataManager.getProjects() : [];
+        const clients = window.dataManager ? window.dataManager.getClients() : [];
+        
+        const modalHtml = `
+            <div class="modal fade" id="newTransactionModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-dark text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle me-2"></i> Create ERP Transaction</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form id="transactionForm">
+                                <div class="row g-4">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-uppercase small text-muted">Type</label>
+                                        <div class="btn-group w-100" role="group">
+                                            <input type="radio" class="btn-check" name="transType" id="transTypeAR" value="ar" checked onchange="app.toggleTransactionFields()">
+                                            <label class="btn btn-outline-primary" for="transTypeAR"><i class="bi bi-download me-1"></i> Receivable</label>
+                                            
+                                            <input type="radio" class="btn-check" name="transType" id="transTypeAP" value="ap" onchange="app.toggleTransactionFields()">
+                                            <label class="btn btn-outline-danger" for="transTypeAP"><i class="bi bi-upload me-1"></i> Payable</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-uppercase small text-muted">Status</label>
+                                        <select class="form-select" name="status" id="transStatus">
+                                            <option value="pending">Pending</option>
+                                            <option value="sent">Sent / Issued</option>
+                                            <option value="paid">Paid / Settled</option>
+                                            <option value="overdue">Overdue</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-uppercase small text-muted" id="transEntityLabel">Client / Payee</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light"><i class="bi bi-person"></i></span>
+                                            <input type="text" class="form-control" name="entity" id="transEntity" placeholder="Company or Individual Name" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-uppercase small text-muted">Reference / Invoice #</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light"><i class="bi bi-hash"></i></span>
+                                            <input type="text" class="form-control" name="reference" id="transRef" placeholder="e.g. INV-2024-001" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-uppercase small text-muted">Amount ($)</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light fw-bold">$</span>
+                                            <input type="number" class="form-control fw-bold" name="amount" id="transAmount" step="0.01" placeholder="0.00" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-uppercase small text-muted">Transaction Date</label>
+                                        <input type="date" class="form-control" name="date" id="transDate" value="${new Date().toISOString().split('T')[0]}">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label fw-bold text-uppercase small text-muted">Link to Project</label>
+                                        <select class="form-select" name="projectId" id="transProject">
+                                            <option value="0">General Overhead / Non-Project</option>
+                                            ${projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label fw-bold text-uppercase small text-muted">Notes / Description</label>
+                                        <textarea class="form-control" name="notes" rows="2" placeholder="Internal notes for this transaction..."></textarea>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button type="button" class="btn btn-link text-muted text-decoration-none" data-bs-dismiss="modal">Discard</button>
+                            <button type="button" class="btn btn-dark px-4" onclick="app.saveFinanceTransaction()">
+                                <i class="bi bi-save me-1"></i> Commit Transaction
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        const existing = document.getElementById('newTransactionModal');
+        if (existing) existing.remove();
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById('newTransactionModal')).show();
+    }
+
+    toggleTransactionFields() {
+        const type = document.querySelector('input[name="transType"]:checked').value;
+        const label = document.getElementById('transEntityLabel');
+        if (type === 'ar') {
+            label.textContent = 'Client / Payer';
+        } else {
+            label.textContent = 'Vendor / Payee';
+        }
+    }
+
+    async saveFinanceTransaction() {
+        const form = document.getElementById('transactionForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        const type = data.transType;
+        const projectId = data.projectId;
+        const project = window.dataManager.getProjects().find(p => p.id == projectId);
+
+        if (!data.entity || !data.reference || !data.amount) {
+            this.showAlert('danger', 'Please provide Entity, Reference, and Amount');
+            return;
+        }
+
+        const transaction = {
+            id: Date.now(),
+            type: type,
+            entity: data.entity,
+            reference: data.reference,
+            amount: parseFloat(data.amount),
+            project_id: projectId,
+            project_name: project ? project.name : 'General Overhead',
+            date: data.date,
+            status: data.status,
+            notes: data.notes,
+            created_at: new Date().toISOString()
+        };
+
+        if (window.dataManager) {
+            window.dataManager.data.finance.push(transaction);
+            window.dataManager.saveData('finance');
+            
+            this.showAlert('success', 'Transaction successfully committed to ledger');
+            bootstrap.Modal.getInstance(document.getElementById('newTransactionModal')).hide();
+            this.loadFinance();
+        }
+    }
+
+    viewTransaction(id) {
+        const trans = window.dataManager.data.finance.find(t => t.id == id);
+        if (!trans) return;
+
+        const modalHtml = `
+            <div class="modal fade" id="viewTransactionModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header ${trans.type === 'ar' ? 'bg-primary' : 'bg-danger'} text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-receipt me-2"></i> Transaction Details</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <div class="text-center mb-4">
+                                <h6 class="text-muted small text-uppercase fw-bold">${trans.type === 'ar' ? 'Receivable' : 'Payable'}</h6>
+                                <h2 class="fw-bold ${trans.type === 'ar' ? 'text-primary' : 'text-danger'}">$${parseFloat(trans.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</h2>
+                                <span class="badge ${trans.status === 'paid' ? 'bg-success' : 'bg-warning'} text-uppercase">${trans.status}</span>
+                            </div>
+                            <hr>
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <label class="text-muted small">Reference #</label>
+                                    <div class="fw-bold">${trans.reference}</div>
+                                </div>
+                                <div class="col-6">
+                                    <label class="text-muted small">Date</label>
+                                    <div class="fw-bold">${new Date(trans.date).toLocaleDateString()}</div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="text-muted small">${trans.type === 'ar' ? 'Client' : 'Vendor'}</label>
+                                    <div class="fw-bold">${trans.entity}</div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="text-muted small">Project</label>
+                                    <div class="fw-bold">${trans.project_name || 'General / Overhead'}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            ${trans.status !== 'paid' ? `<button type="button" class="btn btn-success" onclick="app.payTransaction(${trans.id})">Mark as Paid</button>` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const existing = document.getElementById('viewTransactionModal');
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById('viewTransactionModal')).show();
+    }
+
+    deleteTransaction(id) {
+        if (confirm('Are you sure you want to delete this transaction?')) {
+            const index = window.dataManager.data.finance.findIndex(t => t.id == id);
+            if (index > -1) {
+                window.dataManager.data.finance.splice(index, 1);
+                window.dataManager.saveData('finance');
+                this.loadFinance();
+                this.showAlert('success', 'Transaction deleted');
+            }
+        }
+    }
+
+    payTransaction(id) {
+        const trans = window.dataManager.data.finance.find(t => t.id == id);
+        if (trans) {
+            if (trans.status === 'paid') {
+                this.showAlert('info', 'Generating payment receipt PDF...');
+            } else {
+                trans.status = 'paid';
+                window.dataManager.saveData('finance');
+                this.loadFinance();
+                this.showAlert('success', `Payment of $${trans.amount.toLocaleString()} processed!`);
+                
+                // Close modal if open
+                const modalEl = document.getElementById('viewTransactionModal');
+                if (modalEl) {
+                    const modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                }
+            }
+        }
+    }
+
     loadTimeClock() {
+        const timeEntries = window.dataManager ? window.dataManager.data.time_entries : [];
+        const userEntries = timeEntries.filter(e => e.user_id === this.currentUser.id);
+        const projects = window.dataManager ? window.dataManager.getProjects() : [];
+        
+        const totalMinutes = userEntries.reduce((sum, entry) => sum + (parseFloat(entry.duration_minutes) || 0), 0);
+        const totalHours = (totalMinutes / 60).toFixed(1);
+        
         const content = `
             <div class="row mb-4">
                 <div class="col-12">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h2 class="mb-1 fw-bold"><i class="bi bi-clock-history text-primary"></i> Time Clock</h2>
-                            <p class="text-muted">Field attendance and labor tracking</p>
+                            <h2 class="mb-1 fw-bold"><i class="bi bi-clock-history text-primary"></i> Field Time Clock</h2>
+                            <p class="text-muted">Connecteam-style attendance and job tracking</p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-primary" onclick="app.showTimesheetModal()">
+                                <i class="bi bi-calendar-check me-1"></i> Full Timesheet
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="row g-4">
-                <div class="col-lg-4">
-                    <div class="card border-0 shadow-sm mb-4">
-                        <div class="card-body p-4 text-center">
-                            <h5 class="fw-bold mb-4">Active Session</h5>
-                            <div class="display-4 fw-bold mb-4" id="clockTimer">00:00:00</div>
-                            <p class="text-muted small mb-4">Shift started at: Not Clocked In</p>
-                            <div class="d-grid gap-3">
-                                <button class="btn btn-success btn-lg py-3 shadow-sm" id="btnClockIn" onclick="app.handleClockAction('in')">
-                                    <i class="bi bi-play-fill me-2"></i> CLOCK IN
-                                </button>
-                                <button class="btn btn-danger btn-lg py-3 shadow-sm d-none" id="btnClockOut" onclick="app.handleClockAction('out')">
-                                    <i class="bi bi-stop-fill me-2"></i> CLOCK OUT
-                                </button>
-                            </div>
+                <div class="col-lg-5">
+                    <!-- Clock Interface (Connecteam Style) -->
+                    <div class="card border-0 shadow-lg mb-4 bg-white overflow-hidden" style="border-radius: 20px;">
+                        <div class="card-header bg-primary text-white text-center py-4 border-0">
+                            <h5 class="mb-0 fw-bold text-uppercase tracking-wider">Attendance</h5>
+                            <p class="small opacity-75 mb-0">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
                         </div>
-                    </div>
+                        <div class="card-body p-5 text-center">
+                            <div class="timer-circle ${this.clockInTime ? 'active' : ''} mb-5">
+                                <span class="text-muted small text-uppercase">Shift Time</span>
+                                <div class="clock-display" id="clockTimer">00:00:00</div>
+                                <span class="text-primary fw-bold small mt-1" id="startTimeLabel">
+                                    ${this.clockInTime ? 'Started: ' + new Date(this.clockInTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'Ready to start'}
+                                </span>
+                            </div>
 
-                    <div class="card border-0 shadow-sm">
-                        <div class="card-header bg-white py-3 border-bottom">
-                            <h6 class="mb-0 fw-bold">Weekly Summary</h6>
+                            <div id="clockControls">
+                                ${!this.clockInTime ? `
+                                    <div class="mb-4 text-start">
+                                        <label class="form-label small fw-bold text-muted text-uppercase">Select Job / Project</label>
+                                        <select class="form-select form-select-lg shadow-sm" id="clockProject" style="border-radius: 12px; border: 2px solid #eee;">
+                                            <option value="0">General Maintenance / Shop</option>
+                                            ${projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="mb-4 text-start">
+                                        <label class="form-label small fw-bold text-muted text-uppercase">Task Category</label>
+                                        <select class="form-select form-select-lg shadow-sm" id="clockTask" style="border-radius: 12px; border: 2px solid #eee;">
+                                            <option value="general">General Labor</option>
+                                            <option value="site_prep">Site Preparation</option>
+                                            <option value="framing">Framing / Structure</option>
+                                            <option value="electrical">Electrical / Rough-in</option>
+                                            <option value="plumbing">Plumbing</option>
+                                            <option value="cleanup">Site Cleanup</option>
+                                        </select>
+                                    </div>
+                                    <button class="btn btn-primary btn-lg w-100 py-3 shadow" style="border-radius: 15px; font-weight: 700; font-size: 1.2rem;" onclick="app.handleClockAction('in')">
+                                        <i class="bi bi-play-circle-fill me-2"></i> START SHIFT
+                                    </button>
+                                ` : `
+                                    <div class="p-3 bg-light rounded-4 mb-4 text-start border">
+                                        <div class="small text-muted text-uppercase fw-bold">Active Job:</div>
+                                        <div class="fw-bold fs-5 text-primary">${this.activeClockProjectName || 'General Work'}</div>
+                                    </div>
+                                    <button class="btn btn-danger btn-lg w-100 py-3 shadow" style="border-radius: 15px; font-weight: 700; font-size: 1.2rem;" onclick="app.handleClockAction('out')">
+                                        <i class="bi bi-stop-circle-fill me-2"></i> END SHIFT
+                                    </button>
+                                `}
+                            </div>
                         </div>
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
-                                <span>Total Hours:</span>
-                                <span class="fw-bold">38.5 hrs</span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
-                                <span>Overtime:</span>
-                                <span class="fw-bold text-warning">0.0 hrs</span>
-                            </div>
-                            <div class="d-flex justify-content-between">
-                                <span>Gross Labor Value:</span>
-                                <span class="fw-bold text-success">$1,732.50</span>
-                            </div>
+                        <div class="card-footer bg-light border-0 py-3 text-center">
+                            <i class="bi bi-geo-alt-fill text-success"></i> <small class="text-muted">GPS Location Tracking Enabled</small>
                         </div>
                     </div>
                 </div>
 
-                <div class="col-lg-8">
-                    <div class="card border-0 shadow-sm h-100">
-                        <div class="card-header bg-white py-3 border-bottom">
-                            <h5 class="mb-0 fw-bold">Recent Time Entries</h5>
+                <div class="col-lg-7">
+                    <!-- Daily Summary -->
+                    <div class="row g-4 mb-4">
+                        <div class="col-6">
+                            <div class="card border-0 shadow-sm">
+                                <div class="card-body p-4 text-center">
+                                    <h6 class="text-muted small text-uppercase mb-2">Today's Hours</h6>
+                                    <h2 class="fw-bold mb-0">${this.getTodayHours()}</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="card border-0 shadow-sm">
+                                <div class="card-body p-4 text-center">
+                                    <h6 class="text-muted small text-uppercase mb-2">This Week</h6>
+                                    <h2 class="fw-bold mb-0">${totalHours}</h2>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Entries Table -->
+                    <div class="card border-0 shadow-sm h-100" style="border-radius: 15px;">
+                        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0 fw-bold">Session History</h5>
+                            <span class="badge bg-primary-subtle text-primary">${userEntries.length} Entries</span>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
                                 <table class="table table-hover align-middle mb-0">
-                                    <thead class="bg-light">
+                                    <thead class="bg-light text-muted small text-uppercase">
                                         <tr>
                                             <th class="ps-4">Date</th>
                                             <th>Project</th>
-                                            <th>Clock In</th>
-                                            <th>Clock Out</th>
                                             <th>Duration</th>
-                                            <th class="text-end pe-4">Status</th>
+                                            <th class="text-end pe-4">Details</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr>
-                                            <td class="ps-4 fw-bold">Oct 26, 2023</td>
-                                            <td>Modern Residential Complex</td>
-                                            <td>07:00 AM</td>
-                                            <td>03:30 PM</td>
-                                            <td>8.5 hrs</td>
-                                            <td class="text-end pe-4"><span class="badge bg-success-subtle text-success">APPROVED</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td class="ps-4 fw-bold">Oct 25, 2023</td>
-                                            <td>Modern Residential Complex</td>
-                                            <td>07:05 AM</td>
-                                            <td>04:00 PM</td>
-                                            <td>8.9 hrs</td>
-                                            <td class="text-end pe-4"><span class="badge bg-success-subtle text-success">APPROVED</span></td>
-                                        </tr>
+                                        ${userEntries.length === 0 ? '<tr><td colspan="4" class="text-center py-5 text-muted">No shift history found</td></tr>' : ''}
+                                        ${userEntries.sort((a,b) => new Date(b.clock_in) - new Date(a.clock_in)).slice(0, 8).map(entry => `
+                                            <tr>
+                                                <td class="ps-4">
+                                                    <div class="fw-bold">${new Date(entry.clock_in).toLocaleDateString()}</div>
+                                                    <small class="text-muted">${new Date(entry.clock_in).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</small>
+                                                </td>
+                                                <td>
+                                                    <div class="fw-bold">${entry.project_name}</div>
+                                                    <small class="text-muted text-capitalize">${entry.task || 'General'}</small>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-light text-dark border fw-medium">
+                                                        ${(entry.duration_minutes / 60).toFixed(1)} hrs
+                                                    </span>
+                                                </td>
+                                                <td class="text-end pe-4">
+                                                    <button class="btn btn-sm btn-link text-primary" onclick="app.viewTimeEntry(${entry.id})"><i class="bi bi-info-circle"></i></button>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
                                     </tbody>
                                 </table>
                             </div>
@@ -1395,17 +1888,119 @@ class ConstructProApp {
             </div>
         `;
         document.getElementById('mainContent').innerHTML = content;
+        
+        // Re-initialize timer if active
+        if (this.clockInTime) {
+            this.activeClockProjectName = localStorage.getItem('constructpro_clock_project_name') || 'Active Job';
+            this.startClockTimer();
+        }
+    }
+
+    getTodayHours() {
+        const today = new Date().toDateString();
+        const timeEntries = window.dataManager ? window.dataManager.data.time_entries : [];
+        const todayMinutes = timeEntries
+            .filter(e => e.user_id === this.currentUser.id && new Date(e.clock_in).toDateString() === today)
+            .reduce((sum, e) => sum + (parseFloat(e.duration_minutes) || 0), 0);
+        return (todayMinutes / 60).toFixed(1) + 'h';
     }
 
     handleClockAction(action) {
         if (action === 'in') {
-            document.getElementById('btnClockIn').classList.add('d-none');
-            document.getElementById('btnClockOut').classList.remove('d-none');
-            this.showAlert('success', 'Clocked in successfully! Work hard, stay safe.');
+            const projectSelect = document.getElementById('clockProject');
+            const taskSelect = document.getElementById('clockTask');
+            
+            this.clockInTime = Date.now();
+            this.activeClockProjectId = projectSelect ? projectSelect.value : 0;
+            this.activeClockProjectName = projectSelect ? projectSelect.options[projectSelect.selectedIndex].text : 'General Work';
+            this.activeClockTask = taskSelect ? taskSelect.value : 'general';
+
+            localStorage.setItem('constructpro_clock_in', this.clockInTime);
+            localStorage.setItem('constructpro_clock_project_id', this.activeClockProjectId);
+            localStorage.setItem('constructpro_clock_project_name', this.activeClockProjectName);
+            localStorage.setItem('constructpro_clock_task', this.activeClockTask);
+
+            this.loadTimeClock();
+            this.startClockTimer();
+            this.showAlert('success', `Clocked in for ${this.activeClockProjectName}`);
         } else {
-            document.getElementById('btnClockOut').classList.add('d-none');
-            document.getElementById('btnClockIn').classList.remove('d-none');
-            this.showAlert('info', 'Clocked out. Great work today!');
+            const clockOutTime = Date.now();
+            const durationMs = clockOutTime - this.clockInTime;
+            const durationMinutes = (durationMs / 60000).toFixed(2);
+            
+            this.stopClockTimer();
+            
+            const entry = {
+                id: Date.now(),
+                user_id: this.currentUser.id,
+                project_id: this.activeClockProjectId || 0,
+                project_name: this.activeClockProjectName || 'General Work',
+                task: this.activeClockTask || 'general',
+                clock_in: new Date(this.clockInTime).toISOString(),
+                clock_out: new Date(clockOutTime).toISOString(),
+                duration_minutes: durationMinutes,
+                status: 'approved'
+            };
+
+            if (window.dataManager) {
+                window.dataManager.data.time_entries.push(entry);
+                window.dataManager.saveData('time_entries');
+            }
+            
+            this.clockInTime = null;
+            this.activeClockProjectId = null;
+            this.activeClockProjectName = null;
+            this.activeClockTask = null;
+
+            localStorage.removeItem('constructpro_clock_in');
+            localStorage.removeItem('constructpro_clock_project_id');
+            localStorage.removeItem('constructpro_clock_project_name');
+            localStorage.removeItem('constructpro_clock_task');
+
+            this.showAlert('info', `Clocked out. Session saved.`);
+            this.loadTimeClock();
+        }
+    }
+
+    startClockTimer() {
+        if (this.clockTimerInterval) clearInterval(this.clockTimerInterval);
+        this.clockTimerInterval = setInterval(() => {
+            if (this.clockInTime) {
+                const elapsedMs = Date.now() - this.clockInTime;
+                const hours = Math.floor(elapsedMs / 3600000);
+                const minutes = Math.floor((elapsedMs % 3600000) / 60000);
+                const seconds = Math.floor((elapsedMs % 60000) / 1000);
+                
+                const timerElem = document.getElementById('clockTimer');
+                if (timerElem) {
+                    timerElem.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }
+        }, 1000);
+    }
+
+    stopClockTimer() {
+        if (this.clockTimerInterval) {
+            clearInterval(this.clockTimerInterval);
+            this.clockTimerInterval = null;
+        }
+    }
+
+    saveTimeEntry(clockIn, clockOut, durationMinutes) {
+        const entry = {
+            id: Date.now(),
+            user_id: this.currentUser.id,
+            project_id: this.currentProject ? this.currentProject.id : 0,
+            project_name: this.currentProject ? this.currentProject.name : 'General Work',
+            clock_in: new Date(clockIn).toISOString(),
+            clock_out: new Date(clockOut).toISOString(),
+            duration_minutes: durationMinutes,
+            status: 'approved'
+        };
+
+        if (window.dataManager) {
+            window.dataManager.data.time_entries.push(entry);
+            window.dataManager.saveData('time_entries');
         }
     }
 
@@ -1474,18 +2069,18 @@ class ConstructProApp {
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">First Name</label>
-                                <input type="text" class="form-control" value="${this.currentUser?.firstName || ''}">
+                                <input type="text" class="form-control" name="firstName" value="${this.currentUser?.firstName || ''}">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Last Name</label>
-                                <input type="text" class="form-control" value="${this.currentUser?.lastName || ''}">
+                                <input type="text" class="form-control" name="lastName" value="${this.currentUser?.lastName || ''}">
                             </div>
                             <div class="col-12">
                                 <label class="form-label small fw-bold">Email Address</label>
-                                <input type="email" class="form-control" value="${this.currentUser?.email || ''}">
+                                <input type="email" class="form-control" name="email" value="${this.currentUser?.email || ''}">
                             </div>
                             <div class="col-12 mt-4">
-                                <button type="button" class="btn btn-primary px-4" onclick="app.showAlert('success', 'Profile updated successfully!')">Save Profile</button>
+                                <button type="button" class="btn btn-primary px-4" onclick="app.updateProfile()">Save Profile</button>
                             </div>
                         </div>
                     </form>
@@ -1498,18 +2093,18 @@ class ConstructProApp {
                         <div class="row g-3">
                             <div class="col-12">
                                 <label class="form-label small fw-bold">Company Name</label>
-                                <input type="text" class="form-control" value="${this.currentUser?.company || 'ConstructPro Professional'}">
+                                <input type="text" class="form-control" name="company" value="${this.currentUser?.company || 'ConstructPro Professional'}">
                             </div>
                             <div class="col-12">
                                 <label class="form-label small fw-bold">Business License #</label>
-                                <input type="text" class="form-control" value="GC-12345678-TX">
+                                <input type="text" class="form-control" name="license" value="GC-12345678-TX">
                             </div>
                             <div class="col-12">
                                 <label class="form-label small fw-bold">Tax ID (EIN)</label>
-                                <input type="text" class="form-control" value="**-***5678">
+                                <input type="text" class="form-control" name="ein" value="**-***5678">
                             </div>
                             <div class="col-12 mt-4">
-                                <button type="button" class="btn btn-primary px-4" onclick="app.showAlert('success', 'Company information saved!')">Update Company</button>
+                                <button type="button" class="btn btn-primary px-4" onclick="app.updateCompanySettings()">Update Company</button>
                             </div>
                         </div>
                     </form>
@@ -1525,7 +2120,7 @@ class ConstructProApp {
                                 <p class="text-muted small mb-0">Switch to a dark UI for low-light environments</p>
                             </div>
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" role="switch" id="darkModeSwitch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="darkModeSwitch" onchange="app.toggleDarkMode(this.checked)">
                             </div>
                         </div>
                         <div class="list-group-item d-flex justify-content-between align-items-center px-0">
@@ -1553,6 +2148,233 @@ class ConstructProApp {
                 settingsHtml = `<p class="text-muted">Coming soon...</p>`;
         }
         container.innerHTML = settingsHtml;
+    }
+
+    deleteAdminUser(id) {
+        if (id === this.currentUser.id) {
+            this.showAlert('danger', 'You cannot delete your own account');
+            return;
+        }
+
+        if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+            if (window.authManager) {
+                const index = window.authManager.users.findIndex(u => u.id === id);
+                if (index !== -1) {
+                    window.authManager.users.splice(index, 1);
+                    window.authManager.saveUsers();
+                    this.showAlert('success', 'User deleted successfully');
+                    this.loadAdmin();
+                }
+            }
+        }
+    }
+
+    showEditUserModal(id) {
+        const user = window.authManager.users.find(u => u.id === id);
+        if (!user) return;
+
+        const modalId = 'editUserModal';
+        let modal = document.getElementById(modalId);
+        if (modal) modal.remove();
+
+        const modalHtml = `
+            <div class="modal fade" id="${modalId}" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i> Edit User: ${user.firstName} ${user.lastName}</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form id="editUserForm">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold">First Name</label>
+                                        <input type="text" class="form-control" name="firstName" value="${user.firstName}" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold">Last Name</label>
+                                        <input type="text" class="form-control" name="lastName" value="${user.lastName}" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold">Username</label>
+                                        <input type="text" class="form-control" name="username" value="${user.username}" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold">Email</label>
+                                        <input type="email" class="form-control" name="email" value="${user.email}" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold">Role</label>
+                                        <select class="form-select" name="role">
+                                            <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Company Owner</option>
+                                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrator</option>
+                                            <option value="project_manager" ${user.role === 'project_manager' ? 'selected' : ''}>Project Manager</option>
+                                            <option value="estimator" ${user.role === 'estimator' ? 'selected' : ''}>Estimator</option>
+                                            <option value="superintendent" ${user.role === 'superintendent' ? 'selected' : ''}>Superintendent</option>
+                                            <option value="field_manager" ${user.role === 'field_manager' ? 'selected' : ''}>Field Manager</option>
+                                            <option value="foreman" ${user.role === 'foreman' ? 'selected' : ''}>Foreman</option>
+                                            <option value="laborer" ${user.role === 'laborer' ? 'selected' : ''}>Laborer</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold">Employment Type</label>
+                                        <select class="form-select" name="type">
+                                            <option value="Full-Time" ${user.type === 'Full-Time' ? 'selected' : ''}>Full-Time</option>
+                                            <option value="Contractor" ${user.type === 'Contractor' ? 'selected' : ''}>Contractor</option>
+                                            <option value="Part-Time" ${user.type === 'Part-Time' ? 'selected' : ''}>Part-Time</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-12 mt-4">
+                                        <h6 class="fw-bold mb-3 border-bottom pb-2">Granular Permissions Overrides</h6>
+                                        <div class="row g-2">
+                                            ${['finance', 'daily-logs', 'team', 'blueprints', 'takeoff', 'schedule'].map(perm => `
+                                                <div class="col-md-4">
+                                                    <div class="form-check form-check-inline">
+                                                        <input class="form-check-input" type="checkbox" name="permissions" value="${perm}" id="perm_${perm}" ${user.permissions?.includes(perm) ? 'checked' : ''}>
+                                                        <label class="form-check-label text-capitalize" for="perm_${perm}">${perm.replace('-', ' ')}</label>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary px-4" onclick="app.saveUserChanges('${id}')">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById(modalId)).show();
+    }
+
+    saveUserChanges(id) {
+        const form = document.getElementById('editUserForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        // Handle multi-select permissions
+        const permissions = [];
+        form.querySelectorAll('input[name="permissions"]:checked').forEach(cb => {
+            permissions.push(cb.value);
+        });
+        data.permissions = permissions;
+
+        if (window.authManager) {
+            window.authManager.updateUser(id, data);
+            bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
+            this.showAlert('success', 'User updated successfully');
+            if (this.currentModule === 'admin') this.loadAdmin();
+            if (this.currentModule === 'team') this.loadTeam();
+        }
+    }
+
+    showTimesheetModal() {
+        const timeEntries = window.dataManager ? window.dataManager.data.time_entries : [];
+        const userEntries = timeEntries.filter(e => e.user_id === this.currentUser.id);
+        
+        const modalId = 'timesheetModal';
+        let modal = document.getElementById(modalId);
+        if (modal) modal.remove();
+
+        const modalHtml = `
+            <div class="modal fade" id="${modalId}" tabindex="-1">
+                <div class="modal-dialog modal-xl">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-calendar-check me-2"></i> Employee Timesheet</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="bg-light sticky-top">
+                                        <tr>
+                                            <th class="ps-4">Date</th>
+                                            <th>Project</th>
+                                            <th>Task</th>
+                                            <th>Clock In</th>
+                                            <th>Clock Out</th>
+                                            <th>Duration</th>
+                                            <th class="text-end pe-4">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${userEntries.length === 0 ? '<tr><td colspan="7" class="text-center py-5">No entries found</td></tr>' : ''}
+                                        ${userEntries.sort((a,b) => new Date(b.clock_in) - new Date(a.clock_in)).map(entry => `
+                                            <tr>
+                                                <td class="ps-4 fw-bold">${new Date(entry.clock_in).toLocaleDateString()}</td>
+                                                <td>${entry.project_name}</td>
+                                                <td class="text-capitalize">${entry.task || 'General'}</td>
+                                                <td>${new Date(entry.clock_in).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
+                                                <td>${entry.clock_out ? new Date(entry.clock_out).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '<span class="text-danger">Active</span>'}</td>
+                                                <td>
+                                                    <span class="badge bg-light text-dark border">
+                                                        ${entry.duration_minutes ? (entry.duration_minutes / 60).toFixed(1) + ' hrs' : '-'}
+                                                    </span>
+                                                </td>
+                                                <td class="text-end pe-4">
+                                                    <span class="badge bg-success-subtle text-success">APPROVED</span>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button class="btn btn-outline-secondary" onclick="app.exportTimesheetCSV()">Export CSV</button>
+                            <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById(modalId)).show();
+    }
+
+    exportTimesheetCSV() {
+        const timeEntries = window.dataManager ? window.dataManager.data.time_entries : [];
+        const userEntries = timeEntries.filter(e => e.user_id === this.currentUser.id);
+        
+        let csv = 'Date,Project,Task,Clock In,Clock Out,Duration (Hrs)\n';
+        userEntries.forEach(e => {
+            csv += `${new Date(e.clock_in).toLocaleDateString()},${e.project_name},${e.task || 'General'},${new Date(e.clock_in).toLocaleTimeString()},${e.clock_out ? new Date(e.clock_out).toLocaleTimeString() : 'Active'},${(e.duration_minutes / 60).toFixed(2)}\n`;
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.setAttribute('hidden', '');
+        a.setAttribute('href', url);
+        a.setAttribute('download', `Timesheet_${this.currentUser.lastName}_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    toggleDarkMode(enabled) {
+        if (enabled) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('constructpro_dark_mode', 'true');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('constructpro_dark_mode', 'false');
+        }
+        this.showAlert('info', `Dark mode ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    viewTimeEntry(id) {
+        const entry = window.dataManager.data.time_entries.find(e => e.id === id);
+        if (entry) {
+            this.showAlert('info', `Shift Details: ${entry.project_name} - ${entry.task || 'General Work'}`);
+        }
     }
 
     loadAdmin() {
@@ -1640,8 +2462,8 @@ class ConstructProApp {
                                         <td><small>${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}</small></td>
                                         <td><span class="badge bg-success-subtle text-success">Active</span></td>
                                         <td class="text-end pe-4">
-                                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="app.showAlert('info', 'Edit user coming soon')"><i class="bi bi-pencil"></i></button>
-                                            <button class="btn btn-sm btn-outline-danger" onclick="app.showAlert('info', 'Delete user coming soon')"><i class="bi bi-trash"></i></button>
+                                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="app.showEditUserModal('${user.id}')"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="app.deleteAdminUser('${user.id}')"><i class="bi bi-trash"></i></button>
                                         </td>
                                     </tr>
                                 `).join('')}
@@ -1652,6 +2474,359 @@ class ConstructProApp {
             </div>
         `;
         document.getElementById('mainContent').innerHTML = content;
+    }
+
+    showAddAdminUserModal() {
+        const modalHtml = `
+            <div class="modal fade" id="addAdminUserModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-danger text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i> Add System User</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form id="addAdminUserForm">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">First Name</label>
+                                        <input type="text" class="form-control" name="firstName" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Last Name</label>
+                                        <input type="text" class="form-control" name="lastName" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Email Address</label>
+                                        <input type="email" class="form-control" name="email" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Username</label>
+                                        <input type="text" class="form-control" name="username" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Role</label>
+                                        <select class="form-select" name="role" required>
+                                            <option value="owner">Company Owner (Admin)</option>
+                                            <option value="project_manager">Project Manager</option>
+                                            <option value="estimator">Estimator</option>
+                                            <option value="superintendent">Superintendent</option>
+                                            <option value="field_manager">Field Manager</option>
+                                            <option value="contractor">General Contractor</option>
+                                            <option value="subcontractor">Subcontractor</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Password</label>
+                                        <input type="password" class="form-control" name="password" required>
+                                    </div>
+                                    
+                                    <div class="col-12">
+                                        <hr>
+                                        <h6 class="fw-bold mb-3">Custom Permissions Overrides</h6>
+                                        <div class="row row-cols-2 row-cols-md-3 g-2">
+                                            ${['projects', 'schedule', 'blueprints', 'takeoff', 'daily-logs', 'team', 'finance', 'contracts', 'clients', 'timeclock', 'admin'].map(p => `
+                                                <div class="col">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" name="permissions" value="${p}" id="perm_${p}">
+                                                        <label class="form-check-label small" for="perm_${p}">
+                                                            ${p.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-danger px-4" onclick="app.saveAdminUser()">Create User</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        const existing = document.getElementById('addAdminUserModal');
+        if (existing) existing.remove();
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById('addAdminUserModal')).show();
+    }
+
+    saveAdminUser() {
+        const form = document.getElementById('addAdminUserForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        // Get permissions from checkboxes
+        const permissions = Array.from(form.querySelectorAll('input[name="permissions"]:checked')).map(cb => cb.value);
+        
+        if (window.authManager) {
+            const newUser = {
+                id: Date.now().toString(),
+                firstName: data.firstName,
+                lastName: data.lastName,
+                email: data.email,
+                username: data.username,
+                role: data.role,
+                company: this.currentUser?.company || 'My Company',
+                password: window.authManager.hashPassword(data.password),
+                permissions: permissions,
+                isActive: true,
+                createdAt: new Date().toISOString()
+            };
+            
+            window.authManager.users.push(newUser);
+            window.authManager.saveUsers();
+            this.showAlert('success', `User ${data.firstName} created successfully!`);
+            bootstrap.Modal.getInstance(document.getElementById('addAdminUserModal')).hide();
+            this.loadModule('team');
+        }
+    }
+
+    showEditUserModal(userId) {
+        const user = window.authManager.users.find(u => u.id === userId);
+        if (!user) return;
+
+        const modalHtml = `
+            <div class="modal fade" id="editUserModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i> Edit Member Settings</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form id="editUserForm">
+                                <input type="hidden" name="userId" value="${user.id}">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">First Name</label>
+                                        <input type="text" class="form-control" name="firstName" value="${user.firstName}" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Last Name</label>
+                                        <input type="text" class="form-control" name="lastName" value="${user.lastName}" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Role</label>
+                                        <select class="form-select" name="role">
+                                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrator</option>
+                                            <option value="project_manager" ${user.role === 'project_manager' ? 'selected' : ''}>Project Manager</option>
+                                            <option value="superintendent" ${user.role === 'superintendent' ? 'selected' : ''}>Superintendent</option>
+                                            <option value="estimator" ${user.role === 'estimator' ? 'selected' : ''}>Estimator</option>
+                                            <option value="field_manager" ${user.role === 'field_manager' ? 'selected' : ''}>Field Manager</option>
+                                            <option value="contractor" ${user.role === 'contractor' ? 'selected' : ''}>General Contractor</option>
+                                            <option value="subcontractor" ${user.role === 'subcontractor' ? 'selected' : ''}>Subcontractor</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Status</label>
+                                        <select class="form-select" name="isActive">
+                                            <option value="true" ${user.isActive ? 'selected' : ''}>Active</option>
+                                            <option value="false" ${!user.isActive ? 'selected' : ''}>Inactive</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="col-12">
+                                        <hr>
+                                        <h6 class="fw-bold mb-3">Custom Permissions Overrides</h6>
+                                        <div class="row row-cols-2 row-cols-md-3 g-2">
+                                            ${['projects', 'schedule', 'blueprints', 'takeoff', 'daily-logs', 'team', 'finance', 'contracts', 'clients', 'timeclock', 'admin'].map(p => `
+                                                <div class="col">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" name="permissions" value="${p}" id="edit_perm_${p}" ${(user.permissions && user.permissions.includes(p)) ? 'checked' : ''}>
+                                                        <label class="form-check-label small" for="edit_perm_${p}">
+                                                            ${p.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button type="button" class="btn btn-outline-danger me-auto" onclick="app.deleteAdminUser('${user.id}')">Delete Member</button>
+                            <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary px-4" onclick="app.updateAdminUser()">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const existing = document.getElementById('editUserModal');
+        if (existing) existing.remove();
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById('editUserModal')).show();
+    }
+
+    updateAdminUser() {
+        const form = document.getElementById('editUserForm');
+        const formData = new FormData(form);
+        const userId = formData.get('userId');
+        const permissions = Array.from(form.querySelectorAll('input[name="permissions"]:checked')).map(cb => cb.value);
+        
+        const data = {
+            firstName: formData.get('firstName'),
+            lastName: formData.get('lastName'),
+            role: formData.get('role'),
+            isActive: formData.get('isActive') === 'true',
+            permissions: permissions
+        };
+
+        if (window.authManager) {
+            window.authManager.updateUser(userId, data);
+            bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
+            this.loadModule('team');
+        }
+    }
+
+    openDirectMessage(userId) {
+        const user = window.authManager.users.find(u => u.id === userId);
+        if (!user) return;
+
+        const modalHtml = `
+            <div class="modal fade" id="chatModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content border-0 shadow-lg" style="height: 500px;">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-chat-dots me-2"></i> Chat with ${user.firstName}</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-0 d-flex flex-column bg-light">
+                            <div id="chatMessages" class="flex-grow-1 p-3 overflow-y-auto">
+                                <!-- Messages load here -->
+                            </div>
+                            <div class="p-3 bg-white border-top">
+                                <form id="chatForm" class="d-flex gap-2">
+                                    <input type="text" class="form-control" id="chatInput" placeholder="Type a message..." autocomplete="off">
+                                    <button type="submit" class="btn btn-primary"><i class="bi bi-send"></i></button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const existing = document.getElementById('chatModal');
+        if (existing) existing.remove();
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        const modal = new bootstrap.Modal(document.getElementById('chatModal'));
+        modal.show();
+
+        this.loadChatMessages(userId);
+
+        document.getElementById('chatForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const text = document.getElementById('chatInput').value;
+            if (text.trim() && window.messageManager) {
+                window.messageManager.sendMessage(this.currentUser.id, userId, text);
+                document.getElementById('chatInput').value = '';
+                this.loadChatMessages(userId);
+            }
+        });
+    }
+
+    updateUnreadCount() {
+        if (!window.messageManager || !this.currentUser) return;
+        const count = window.messageManager.getUnreadCount(this.currentUser.id);
+        const badge = document.getElementById('unreadMessagesCount');
+        if (badge) {
+            badge.textContent = count;
+            badge.style.display = count > 0 ? 'block' : 'none';
+        }
+    }
+
+    showRecentChats() {
+        if (!window.authManager || !window.messageManager) return;
+        
+        const users = window.authManager.users.filter(u => u.id !== this.currentUser.id);
+        
+        const modalHtml = `
+            <div class="modal fade" id="recentChatsModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-chat-text me-2"></i> Team Messages</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-0">
+                            <div class="list-group list-group-flush">
+                                ${users.map(user => {
+                                    const messages = window.messageManager.getMessagesBetween(this.currentUser.id, user.id);
+                                    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+                                    return `
+                                        <button class="list-group-item list-group-item-action d-flex align-items-center py-3" onclick="app.openDirectMessage('${user.id}'); bootstrap.Modal.getInstance(document.getElementById('recentChatsModal')).hide();">
+                                            <div class="bg-primary-subtle text-primary rounded-circle p-2 me-3" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                                                <span class="small fw-bold">${user.firstName[0]}${user.lastName[0]}</span>
+                                            </div>
+                                            <div class="flex-grow-1 overflow-hidden">
+                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                    <h6 class="mb-0 fw-bold">${user.firstName} ${user.lastName}</h6>
+                                                    ${lastMsg ? `<small class="text-muted">${new Date(lastMsg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>` : ''}
+                                                </div>
+                                                <div class="small text-truncate text-muted">
+                                                    ${lastMsg ? lastMsg.text : 'Start a conversation...'}
+                                                </div>
+                                            </div>
+                                        </button>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const existing = document.getElementById('recentChatsModal');
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById('recentChatsModal')).show();
+    }
+
+    loadChatMessages(otherId) {
+        const container = document.getElementById('chatMessages');
+        if (!container || !window.messageManager) return;
+
+        const messages = window.messageManager.getMessagesBetween(this.currentUser.id, otherId);
+        container.innerHTML = messages.map(m => `
+            <div class="d-flex ${m.fromId === this.currentUser.id ? 'justify-content-end' : 'justify-content-start'} mb-2">
+                <div class="rounded p-2 px-3 shadow-sm ${m.fromId === this.currentUser.id ? 'bg-primary text-white' : 'bg-white'}" style="max-width: 80%;">
+                    <div class="small mb-1">${m.text}</div>
+                    <div class="text-end" style="font-size: 0.7rem; opacity: 0.8;">
+                        ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        
+        container.scrollTop = container.scrollHeight;
+        
+        // Mark as read
+        window.messageManager.markAsRead(otherId, this.currentUser.id);
+        this.updateUnreadCount();
+    }
+
+    deleteAdminUser(userId) {
+        if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+            if (window.authManager && window.authManager.deleteUser(userId)) {
+                if (this.currentModule === 'admin') {
+                    this.loadModule('admin');
+                } else {
+                    this.loadModule('team');
+                }
+            }
+        }
     }
 
     loadBlueprints() {
@@ -2716,6 +3891,10 @@ class ConstructProApp {
     }
 
     loadTeam() {
+        const users = window.authManager ? window.authManager.users : [];
+        const subcontractors = window.dataManager ? window.dataManager.data.subcontractors : [];
+        const currentUser = this.currentUser;
+
         document.getElementById('mainContent').innerHTML = `
             <div class="row mb-4">
                 <div class="col-12">
@@ -2724,86 +3903,66 @@ class ConstructProApp {
                             <h2 class="mb-1 fw-bold"><i class="bi bi-person-badge text-primary"></i> Team Management</h2>
                             <p class="text-muted">Manage crew members, subcontractors, and role assignments</p>
                         </div>
-                        <button class="btn btn-primary shadow-sm" onclick="app.showAddTeamMemberModal()">
+                        ${this.hasPermission('admin') ? `
+                        <button class="btn btn-primary shadow-sm" onclick="app.showAddAdminUserModal()">
                             <i class="bi bi-person-plus me-1"></i> Add Member
                         </button>
+                        ` : ''}
                     </div>
                 </div>
             </div>
 
             <div class="row g-4">
-                <div class="col-md-6 col-lg-4">
-                    <div class="card border-0 shadow-sm">
-                        <div class="card-body p-4 text-center">
-                            <div class="mb-3">
-                                <div class="bg-primary-subtle text-primary rounded-circle d-inline-flex p-3" style="width: 80px; height: 80px; align-items: center; justify-content: center;">
-                                    <h3 class="mb-0 fw-bold">JD</h3>
+                ${users.map(user => `
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-body p-4 text-center">
+                                <div class="mb-3">
+                                    <div class="bg-primary-subtle text-primary rounded-circle d-inline-flex p-3" style="width: 80px; height: 80px; align-items: center; justify-content: center;">
+                                        <h3 class="mb-0 fw-bold">${(user.firstName?.[0] || '')}${(user.lastName?.[0] || '')}</h3>
+                                    </div>
                                 </div>
-                            </div>
-                            <h5 class="fw-bold mb-1">John Doe</h5>
-                            <p class="text-muted small">Project Manager</p>
-                            <div class="d-flex justify-content-center gap-2 mb-3">
-                                <span class="badge bg-light text-dark border">Full-Time</span>
-                                <span class="badge bg-primary-subtle text-primary border">Admin</span>
-                            </div>
-                            <hr>
-                            <div class="d-grid">
-                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile('demo-1')">View Profile</button>
+                                <h5 class="fw-bold mb-1">${user.firstName} ${user.lastName}</h5>
+                                <p class="text-muted small mb-2">${this.getRoleDisplayName(user.role)}</p>
+                                <div class="d-flex justify-content-center gap-2 mb-3">
+                                    <span class="badge bg-light text-dark border">${user.type || 'Full-Time'}</span>
+                                    <span class="badge ${user.isActive ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} border">
+                                        ${user.isActive ? 'Active' : 'Inactive'}
+                                    </span>
+                                </div>
+                                <hr>
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <button class="btn btn-sm btn-outline-secondary w-100" onclick="app.showUserProfile('${user.id}')">
+                                            <i class="bi bi-person me-1"></i> Profile
+                                        </button>
+                                    </div>
+                                    <div class="col-6">
+                                        ${user.id !== currentUser?.id ? `
+                                            <button class="btn btn-sm btn-outline-primary w-100" onclick="app.openDirectMessage('${user.id}')">
+                                                <i class="bi bi-chat-dots me-1"></i> Message
+                                            </button>
+                                        ` : `
+                                            <button class="btn btn-sm btn-outline-info w-100" disabled>
+                                                <i class="bi bi-person-check me-1"></i> You
+                                            </button>
+                                        `}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-
-                <div class="col-md-6 col-lg-4">
-                    <div class="card border-0 shadow-sm">
-                        <div class="card-body p-4 text-center">
-                            <div class="mb-3">
-                                <div class="bg-success-subtle text-success rounded-circle d-inline-flex p-3" style="width: 80px; height: 80px; align-items: center; justify-content: center;">
-                                    <h3 class="mb-0 fw-bold">SM</h3>
-                                </div>
-                            </div>
-                            <h5 class="fw-bold mb-1">Sarah Miller</h5>
-                            <p class="text-muted small">Site Supervisor</p>
-                            <div class="d-flex justify-content-center gap-2 mb-3">
-                                <span class="badge bg-light text-dark border">Full-Time</span>
-                                <span class="badge bg-success-subtle text-success border">Site Lead</span>
-                            </div>
-                            <hr>
-                            <div class="d-grid">
-                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile('demo-2')">View Profile</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-6 col-lg-4">
-                    <div class="card border-0 shadow-sm">
-                        <div class="card-body p-4 text-center">
-                            <div class="mb-3">
-                                <div class="bg-info-subtle text-info rounded-circle d-inline-flex p-3" style="width: 80px; height: 80px; align-items: center; justify-content: center;">
-                                    <h3 class="mb-0 fw-bold">BW</h3>
-                                </div>
-                            </div>
-                            <h5 class="fw-bold mb-1">Bill Watts</h5>
-                            <p class="text-muted small">Electrical Lead (Sub)</p>
-                            <div class="d-flex justify-content-center gap-2 mb-3">
-                                <span class="badge bg-light text-dark border">Contractor</span>
-                                <span class="badge bg-info-subtle text-info border">Foreman</span>
-                            </div>
-                            <hr>
-                            <div class="d-grid">
-                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile('demo-3')">View Profile</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                `).join('')}
             </div>
 
             <div class="row mt-5">
                 <div class="col-12">
                     <div class="card border-0 shadow-sm">
-                        <div class="card-header bg-white py-3">
+                        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                             <h5 class="mb-0 fw-bold">Subcontractor Directory</h5>
+                            <button class="btn btn-sm btn-outline-primary" onclick="app.showAddSubcontractorModal()">
+                                <i class="bi bi-plus-lg me-1"></i> Add Sub
+                            </button>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
@@ -2817,27 +3976,23 @@ class ConstructProApp {
                                             <th class="text-end pe-4">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td class="ps-4 fw-bold">Apex Plumbing Inc.</td>
-                                            <td><span class="badge bg-light text-dark">Plumbing</span></td>
-                                            <td>Mike Apex</td>
-                                            <td><span class="badge bg-success-subtle text-success">Verified</span></td>
-                                            <td class="text-end pe-4">
-                                                <button class="btn btn-sm btn-link"><i class="bi bi-telephone"></i></button>
-                                                <button class="btn btn-sm btn-link text-primary"><i class="bi bi-chat-text"></i></button>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="ps-4 fw-bold">Elite Masonry</td>
-                                            <td><span class="badge bg-light text-dark">Masonry</span></td>
-                                            <td>Dan Brick</td>
-                                            <td><span class="badge bg-success-subtle text-success">Verified</span></td>
-                                            <td class="text-end pe-4">
-                                                <button class="btn btn-sm btn-link"><i class="bi bi-telephone"></i></button>
-                                                <button class="btn btn-sm btn-link text-primary"><i class="bi bi-chat-text"></i></button>
-                                            </td>
-                                        </tr>
+                                    <tbody id="subcontractorList">
+                                        ${subcontractors.length === 0 ? `
+                                            <tr>
+                                                <td colspan="5" class="text-center py-4 text-muted">No subcontractors added yet</td>
+                                            </tr>
+                                        ` : subcontractors.map(sub => `
+                                            <tr>
+                                                <td class="ps-4 fw-bold">${sub.company}</td>
+                                                <td><span class="badge bg-light text-dark border">${sub.trade}</span></td>
+                                                <td>${sub.contact}</td>
+                                                <td><span class="badge bg-success-subtle text-success border">Verified</span></td>
+                                                <td class="text-end pe-4">
+                                                    <button class="btn btn-sm btn-link text-primary" onclick="app.showAlert('info', 'Messaging subs coming soon')"><i class="bi bi-chat-text"></i></button>
+                                                    <button class="btn btn-sm btn-link text-danger" onclick="app.deleteSubcontractor(${sub.id})"><i class="bi bi-trash"></i></button>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
                                     </tbody>
                                 </table>
                             </div>
@@ -2846,6 +4001,89 @@ class ConstructProApp {
                 </div>
             </div>
         `;
+    }
+
+    showAddSubcontractorModal() {
+        const modalId = 'addSubModal';
+        let modal = document.getElementById(modalId);
+        if (modal) modal.remove();
+
+        const modalHtml = `
+            <div class="modal fade" id="${modalId}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-building-add me-2"></i> Register Subcontractor</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form id="addSubForm">
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Company Name</label>
+                                    <input type="text" class="form-control" name="company" required placeholder="e.g., Apex Plumbing">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Trade / Industry</label>
+                                    <select class="form-select" name="trade">
+                                        <option value="Plumbing">Plumbing</option>
+                                        <option value="Electrical">Electrical</option>
+                                        <option value="Masonry">Masonry</option>
+                                        <option value="HVAC">HVAC</option>
+                                        <option value="Roofing">Roofing</option>
+                                        <option value="Demolition">Demolition</option>
+                                        <option value="Chimney Sweep">Chimney Sweep</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Contact Person</label>
+                                    <input type="text" class="form-control" name="contact" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Email</label>
+                                    <input type="email" class="form-control" name="email" required>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary px-4" onclick="app.saveSubcontractor()">Add Subcontractor</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById(modalId)).show();
+    }
+
+    saveSubcontractor() {
+        const form = document.getElementById('addSubForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        const sub = {
+            id: Date.now(),
+            ...data
+        };
+
+        if (window.dataManager) {
+            window.dataManager.data.subcontractors.push(sub);
+            window.dataManager.saveData('subcontractors');
+            this.showAlert('success', `${data.company} added to directory`);
+            bootstrap.Modal.getInstance(document.getElementById('addSubModal')).hide();
+            this.loadTeam();
+        }
+    }
+
+    deleteSubcontractor(id) {
+        if (confirm('Remove this subcontractor from the directory?')) {
+            const index = window.dataManager.data.subcontractors.findIndex(s => s.id === id);
+            if (index !== -1) {
+                window.dataManager.data.subcontractors.splice(index, 1);
+                window.dataManager.saveData('subcontractors');
+                this.loadTeam();
+            }
+        }
     }
 }
 

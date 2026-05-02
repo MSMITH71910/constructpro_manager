@@ -594,6 +594,10 @@ class AuthManager {
     hasPermission(permission) {
         if (!this.isAuthenticated || !this.currentUser) return false;
         
+        // Check individual overrides first
+        if (this.currentUser.permissions && this.currentUser.permissions.includes('*')) return true;
+        if (this.currentUser.permissions && this.currentUser.permissions.includes(permission)) return true;
+
         const rolePermissions = {
             'admin': ['*'],
             'owner': ['*'],
@@ -650,6 +654,41 @@ class AuthManager {
         this.currentUser = demoUser;
         this.isAuthenticated = true;
         this.completeLogin(false);
+    }
+
+    deleteUser(userId) {
+        if (this.currentUser && this.currentUser.id === userId) {
+            this.showAlert('danger', 'You cannot delete your own account.');
+            return false;
+        }
+        
+        const index = this.users.findIndex(u => u.id === userId);
+        if (index !== -1) {
+            this.users.splice(index, 1);
+            this.saveUsers();
+            this.showAlert('success', 'User deleted successfully.');
+            return true;
+        }
+        return false;
+    }
+
+    updateUser(userId, updatedData) {
+        const index = this.users.findIndex(u => u.id === userId);
+        if (index !== -1) {
+            this.users[index] = { ...this.users[index], ...updatedData };
+            this.saveUsers();
+            
+            // Update current user if it's the one being updated
+            if (this.currentUser && this.currentUser.id === userId) {
+                this.currentUser = { ...this.currentUser, ...updatedData };
+                delete this.currentUser.password;
+                this.saveSession();
+            }
+            
+            this.showAlert('success', 'User updated successfully.');
+            return true;
+        }
+        return false;
     }
 }
 
