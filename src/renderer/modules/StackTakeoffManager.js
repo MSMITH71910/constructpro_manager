@@ -504,7 +504,7 @@ class StackTakeoffManager {
 
         const html = this.blueprints.map(file => `
             <div class="file-item d-flex align-items-center justify-content-between" 
-                 onclick="stackManager.selectFile(${file.id})">
+                 onclick="stackManager.selectFile('${file.id}')">
                 <div class="d-flex align-items-center">
                     <i class="bi bi-file-earmark-${this.getFileIcon(file.type)} me-2 text-primary"></i>
                     <div>
@@ -519,10 +519,10 @@ class StackTakeoffManager {
                         <i class="bi bi-three-dots-vertical text-muted"></i>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-sm">
-                        <li><a class="dropdown-item small" href="#" onclick="stackManager.openFile(${file.id})">Open</a></li>
-                        <li><a class="dropdown-item small" href="#" onclick="stackManager.downloadFile(${file.id})">Download</a></li>
+                        <li><a class="dropdown-item small" href="#" onclick="stackManager.openFile('${file.id}')">Open</a></li>
+                        <li><a class="dropdown-item small" href="#" onclick="stackManager.downloadFile('${file.id}')">Download</a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item small text-danger" href="#" onclick="stackManager.deleteFile(${file.id})">Delete</a></li>
+                        <li><a class="dropdown-item small text-danger" href="#" onclick="stackManager.deleteFile('${file.id}')">Delete</a></li>
                     </ul>
                 </div>
             </div>
@@ -951,7 +951,7 @@ class StackTakeoffManager {
             <div class="takeoff-item">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <strong class="text-primary small">${item.name}</strong>
-                    <button class="btn btn-sm p-0 text-danger" onclick="stackManager.removeTakeoffItem(${item.id})">
+                    <button class="btn btn-sm p-0 text-danger" onclick="stackManager.removeTakeoffItem('${item.id}')">
                         <i class="bi bi-x"></i>
                     </button>
                 </div>

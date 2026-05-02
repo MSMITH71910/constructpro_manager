@@ -249,7 +249,7 @@ class BlueprintManager {
         const html = this.blueprints.map(blueprint => `
             <div class="blueprint-item border rounded p-3 mb-2 hover-shadow" 
                  style="cursor: pointer;" 
-                 onclick="blueprintManager.selectBlueprint(${blueprint.id})">
+                 onclick="blueprintManager.selectBlueprint('${blueprint.id}')">
                 <div class="d-flex justify-content-between align-items-start">
                     <div class="flex-grow-1">
                         <h6 class="mb-1">${blueprint.name}</h6>
@@ -678,7 +678,7 @@ class BlueprintManager {
                             <span class="badge bg-info text-white ms-1">${item.blueprint}</span>
                         </div>
                     </div>
-                    <button class="btn btn-sm btn-outline-danger" onclick="blueprintManager.removeTakeoffItem(${item.id})">
+                    <button class="btn btn-sm btn-outline-danger" onclick="blueprintManager.removeTakeoffItem('${item.id}')">
                         <i class="bi bi-x"></i>
                     </button>
                 </div>

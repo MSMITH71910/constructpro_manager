@@ -3,6 +3,7 @@ class ConstructProApp {
     constructor() {
         this.currentModule = 'dashboard';
         this.currentScheduleView = 'list'; // list, gantt, board
+        this.teamViewMode = 'grid'; // grid, list
         this.selectedIndustry = null;
         this.currentProject = null;
         this.currentEstimate = {
@@ -94,23 +95,14 @@ class ConstructProApp {
             // Initialize DataManager first and wait for it to load data
             window.dataManager = new DataManager();
             
-            // Wait for DataManager to be fully initialized with a timeout
-            let retryCount = 0;
-            const maxRetries = 50; // 5 seconds
-            while ((!window.dataManager || !window.dataManager.data || window.dataManager.data.industries.length === 0) && retryCount < maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-                retryCount++;
-            }
-            
-            if (retryCount >= maxRetries) {
-                console.warn('DataManager took too long to initialize, proceeding with fallback data');
-            }
+            // Wait a brief moment for DataManager to initialize
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Initialize modules
             window.estimateBuilder = new EstimateBuilder();
             window.takeoffManager = new TakeoffManager();
             window.blueprintManager = new BlueprintManager();
-            window.stackTakeoffManager = new StackTakeoffManager();
+            window.stackManager = new StackTakeoffManager();
             window.contractCreator = new ContractCreator();
             
             await this.loadIndustries();
@@ -196,8 +188,6 @@ class ConstructProApp {
         const navbarNav = document.querySelector('.navbar-nav');
         if (!navbarNav) return;
 
-        // Clear existing module buttons (keep them for now and just hide/show?)
-        // Better to rebuild them to match getVisibleModules()
         const visibleModules = window.authManager.getVisibleModules();
         
         let navHtml = visibleModules.map(module => `
@@ -209,43 +199,63 @@ class ConstructProApp {
         // Add Admin link if user has permission
         if (this.currentUser.role === 'admin' || this.currentUser.role === 'owner') {
             navHtml += `
-                <button class="btn btn-link nav-link px-3 nav-btn text-warning" data-module="admin" onclick="app.loadModule('admin')">
-                    <i class="bi bi-shield-lock"></i> Admin
+                <button class="btn btn-link nav-link px-3 nav-btn text-warning fw-bold" data-module="admin" onclick="app.loadModule('admin')">
+                    <i class="bi bi-shield-lock"></i> ADMIN
                 </button>
             `;
         }
+
+        // Add Time Clock Quick Toggle
+        const clockBtnClass = this.clockInTime ? 'btn-danger animate-pulse' : 'btn-outline-light';
+        const clockIcon = this.clockInTime ? 'bi-stop-circle' : 'bi-play-circle';
+        const clockText = this.clockInTime ? 'CLOCK OUT' : 'CLOCK IN';
+        
+        navHtml += `
+            <div class="d-flex align-items-center ms-lg-3 gap-2 py-2 py-lg-0">
+                <button class="btn btn-sm ${clockBtnClass} rounded-pill px-3 fw-bold shadow-sm d-flex align-items-center" onclick="app.loadModule('timeclock')">
+                    <i class="bi ${clockIcon} me-1"></i> <span class="d-none d-xl-inline">${clockText}</span>
+                </button>
+                
+                <button class="btn btn-link nav-link px-2 position-relative" onclick="app.showRecentChats()" title="Team Messenger">
+                    <i class="bi bi-chat-text-fill fs-5"></i>
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-2 border-primary" id="unreadMessagesCount" style="display: none; font-size: 0.6rem; padding: 0.25em 0.4em;">
+                        0
+                    </span>
+                </button>
+            </div>
+        `;
 
         navbarNav.innerHTML = navHtml;
         
         // Add user dropdown to navbar
         const userDropdownHtml = `
             <div class="dropdown ms-3" id="userDropdown">
-                <button class="btn btn-link nav-link dropdown-toggle d-flex align-items-center" 
+                <button class="btn btn-link nav-link dropdown-toggle d-flex align-items-center bg-white bg-opacity-10 rounded-pill px-3 py-1 border border-white border-opacity-25 shadow-sm" 
                         type="button" data-bs-toggle="dropdown">
-                    <div class="bg-light rounded-circle p-1 me-2 d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
-                        <i class="bi bi-person text-primary"></i>
+                    <div class="bg-white rounded-circle p-1 me-2 d-flex align-items-center justify-content-center" style="width: 28px; height: 28px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);">
+                        <i class="bi bi-person-fill text-primary"></i>
                     </div>
-                    <span>${this.currentUser.firstName}</span>
+                    <span class="fw-bold small text-white">${this.currentUser.firstName}</span>
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2">
+                <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-2 p-2" style="border-radius: 12px; min-width: 240px;">
                     <li>
                         <div class="dropdown-header border-bottom mb-2 pb-2">
-                            <strong class="text-dark d-block">${this.currentUser.firstName} ${this.currentUser.lastName}</strong>
-                            <small class="text-muted">${this.currentUser.company}</small><br>
-                            <span class="badge bg-primary-subtle text-primary mt-1">${this.getRoleDisplayName(this.currentUser.role)}</span>
+                            <strong class="text-dark d-block fs-6">${this.currentUser.firstName} ${this.currentUser.lastName}</strong>
+                            <small class="text-muted d-block mb-1">${this.currentUser.company || 'Professional'}</small>
+                            <span class="badge bg-primary-subtle text-primary rounded-pill" style="font-size: 0.7rem;">${this.getRoleDisplayName(this.currentUser.role)}</span>
                         </div>
                     </li>
-                    <li><a class="dropdown-item py-2" href="#" onclick="app.showSettings('profile')">
-                        <i class="bi bi-person me-2"></i> Profile Settings
+                    <li><a class="dropdown-item py-2 rounded-2" href="#" onclick="app.showSettings('profile')">
+                        <i class="bi bi-person me-2 text-primary"></i> My Profile
                     </a></li>
-                    <li><a class="dropdown-item py-2" href="#" onclick="app.showSettings('company')">
-                        <i class="bi bi-building me-2"></i> Company Settings
+                    <li><a class="dropdown-item py-2 rounded-2" href="#" onclick="app.showSettings('company')">
+                        <i class="bi bi-building me-2 text-primary"></i> Company Settings
                     </a></li>
-                    <li><a class="dropdown-item py-2" href="#" onclick="app.showSettings('app')">
-                        <i class="bi bi-gear me-2"></i> App Settings
+                    <li><a class="dropdown-item py-2 rounded-2" href="#" onclick="app.showSettings('app')">
+                        <i class="bi bi-gear me-2 text-primary"></i> App Preferences
                     </a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item py-2 text-danger" href="#" onclick="app.logout()">
+                    <li><hr class="dropdown-divider mx-n2"></li>
+                    <li><a class="dropdown-item py-2 rounded-2 text-danger fw-bold" href="#" onclick="app.logout()">
                         <i class="bi bi-box-arrow-right me-2"></i> Sign Out
                     </a></li>
                 </ul>
@@ -253,6 +263,7 @@ class ConstructProApp {
         `;
         
         navbarNav.insertAdjacentHTML('beforeend', userDropdownHtml);
+        this.updateUnreadCount();
     }
 
     getRoleDisplayName(role) {
@@ -657,118 +668,6 @@ class ConstructProApp {
         new bootstrap.Modal(document.getElementById('userProfileModal')).show();
     }
 
-    showAddAdminUserModal() {
-        const modalId = 'addAdminUserModal';
-        let modal = document.getElementById(modalId);
-        if (modal) modal.remove();
-
-        const modalHtml = `
-            <div class="modal fade" id="${modalId}" tabindex="-1">
-                <div class="modal-dialog modal-lg">
-                    <div class="modal-content border-0 shadow-lg">
-                        <div class="modal-header bg-primary text-white">
-                            <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i> Register Team Member</h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body p-4">
-                            <form id="addAdminUserForm">
-                                <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold small">First Name</label>
-                                        <input type="text" class="form-control" name="firstName" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold small">Last Name</label>
-                                        <input type="text" class="form-control" name="lastName" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold small">Email Address</label>
-                                        <input type="email" class="form-control" name="email" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold small">Username</label>
-                                        <input type="text" class="form-control" name="username" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold small">Initial Password</label>
-                                        <input type="password" class="form-control" name="password" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold small">Base Role</label>
-                                        <select class="form-select" name="role" required>
-                                            <option value="project_manager">Project Manager</option>
-                                            <option value="estimator">Estimator</option>
-                                            <option value="superintendent">Superintendent</option>
-                                            <option value="field_manager">Field Manager</option>
-                                            <option value="foreman">Foreman</option>
-                                            <option value="laborer">General Laborer</option>
-                                            <option value="subcontractor">External Subcontractor</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-12 mt-4">
-                                        <h6 class="fw-bold mb-3 border-bottom pb-2">Assign Permissions</h6>
-                                        <div class="row g-2">
-                                            ${['finance', 'daily-logs', 'team', 'blueprints', 'takeoff', 'schedule'].map(perm => `
-                                                <div class="col-md-4">
-                                                    <div class="form-check">
-                                                        <input class="form-check-input" type="checkbox" name="permissions" value="${perm}" id="new_perm_${perm}">
-                                                        <label class="form-check-label text-capitalize" for="new_perm_${perm}">${perm.replace('-', ' ')}</label>
-                                                    </div>
-                                                </div>
-                                            `).join('')}
-                                        </div>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                        <div class="modal-footer bg-light">
-                            <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
-                            <button type="button" class="btn btn-primary px-4" onclick="app.saveAdminUser()">Create Member</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        new bootstrap.Modal(document.getElementById(modalId)).show();
-    }
-
-    saveAdminUser() {
-        const form = document.getElementById('addAdminUserForm');
-        const formData = new FormData(form);
-        const data = Object.fromEntries(formData.entries());
-        
-        // Handle multi-select permissions
-        const permissions = [];
-        form.querySelectorAll('input[name="permissions"]:checked').forEach(cb => {
-            permissions.push(cb.value);
-        });
-        data.permissions = permissions;
-
-        if (!data.username || !data.password) {
-            this.showAlert('danger', 'Username and password are required');
-            return;
-        }
-
-        if (window.authManager) {
-            const newUser = {
-                id: Date.now().toString(),
-                ...data,
-                password: window.authManager.hashPassword(data.password),
-                company: this.currentUser.company,
-                createdAt: new Date().toISOString(),
-                isActive: true,
-                type: data.role === 'subcontractor' ? 'Contractor' : 'Full-Time'
-            };
-            
-            window.authManager.users.push(newUser);
-            window.authManager.saveUsers();
-            
-            this.showAlert('success', `Team member account created for ${data.firstName}`);
-            bootstrap.Modal.getInstance(document.getElementById('addAdminUserModal')).hide();
-            this.loadTeam();
-        }
-    }
 
     addMilestone() {
         const modalId = 'addTaskModal';
@@ -1294,144 +1193,244 @@ class ConstructProApp {
     }
 
     loadFinance() {
+        if (!window.authManager.hasPermission('finance')) {
+            document.getElementById('mainContent').innerHTML = `
+                <div class="alert alert-danger m-4 shadow-sm border-0" style="border-radius: 12px;">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-shield-lock-fill fs-2 me-3 text-danger"></i>
+                        <div>
+                            <h5 class="fw-bold mb-1">Access Restricted</h5>
+                            <p class="mb-0">You do not have the required permissions to access the Finance & Accounting module.</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
         const transactions = window.dataManager ? window.dataManager.data.finance : [];
         const arTransactions = transactions.filter(t => t.type === 'ar');
         const apTransactions = transactions.filter(t => t.type === 'ap');
+        const users = window.authManager ? window.authManager.users : [];
         
         const arTotal = arTransactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
         const apTotal = apTransactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
-        const paidAR = arTransactions.filter(t => t.status === 'paid').reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
-        const pendingAR = arTotal - paidAR;
+        
+        // Calculate estimated weekly payroll
+        const weeklyPayroll = users.reduce((sum, u) => {
+            const rate = parseFloat(u.payRate || 0);
+            return sum + (u.type === 'Salary' ? rate / 52 : rate * 40);
+        }, 0);
 
         const content = `
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h2 class="mb-1 fw-bold"><i class="bi bi-wallet2 text-success"></i> Accounting & ERP</h2>
-                            <p class="text-muted">Enterprise financial management for General Contractors</p>
-                        </div>
-                        <div class="d-flex gap-2">
-                            <button class="btn btn-outline-secondary" onclick="app.exportFinanceData()">
-                                <i class="bi bi-download me-1"></i> Export Reports
-                            </button>
-                            <button class="btn btn-primary shadow-sm" onclick="app.showNewTransactionModal()">
-                                <i class="bi bi-plus-lg me-1"></i> New Transaction
-                            </button>
-                        </div>
+            <div class="row mb-4 align-items-end">
+                <div class="col">
+                    <h2 class="mb-1 fw-bold text-dark"><i class="bi bi-wallet2 text-success me-2"></i> Accounting & ERP</h2>
+                    <p class="text-muted mb-0">Enterprise financial management, AP/AR tracking, and payroll</p>
+                </div>
+                <div class="col-auto">
+                    <div class="btn-group shadow-sm">
+                        <button class="btn btn-white border px-3" onclick="app.exportFinanceData()">
+                            <i class="bi bi-download me-1"></i> Export CSV
+                        </button>
+                        <button class="btn btn-primary px-4" onclick="app.showNewTransactionModal()">
+                            <i class="bi bi-plus-lg me-1"></i> New Transaction
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Financial Health Dashboard -->
             <div class="row g-4 mb-4">
                 <div class="col-md-3">
-                    <div class="card border-0 shadow-sm card-stats h-100">
+                    <div class="card border-0 shadow-sm h-100 overflow-hidden" style="border-radius: 15px;">
                         <div class="card-body p-4">
-                            <div class="d-flex justify-content-between mb-3">
-                                <div class="finance-icon bg-primary-subtle text-primary">
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="bg-primary bg-opacity-10 text-primary rounded p-2">
                                     <i class="bi bi-arrow-down-left fs-4"></i>
                                 </div>
-                                <div class="text-end">
-                                    <span class="badge bg-success-subtle text-success">+12%</span>
-                                </div>
+                                <span class="badge bg-success-subtle text-success border-0 small">+12%</span>
                             </div>
                             <h6 class="text-muted small text-uppercase fw-bold mb-1">Total Revenue</h6>
-                            <h3 class="fw-bold mb-0">$${arTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
-                            <p class="text-muted small mt-2 mb-0">Total of all invoices sent</p>
+                            <h3 class="fw-bold mb-0 text-dark">$${arTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card border-0 shadow-sm card-stats h-100">
+                    <div class="card border-0 shadow-sm h-100 overflow-hidden" style="border-radius: 15px;">
                         <div class="card-body p-4">
-                            <div class="d-flex justify-content-between mb-3">
-                                <div class="finance-icon bg-danger-subtle text-danger">
-                                    <i class="bi bi-arrow-up-right fs-4"></i>
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="bg-danger bg-opacity-10 text-danger rounded p-2">
+                                    <i class="bi bi-cash-stack fs-4"></i>
                                 </div>
-                                <div class="text-end">
-                                    <span class="badge bg-danger-subtle text-danger">-5%</span>
-                                </div>
+                                <span class="badge bg-danger-subtle text-danger border-0 small">+5%</span>
                             </div>
-                            <h6 class="text-muted small text-uppercase fw-bold mb-1">Accounts Payable</h6>
+                            <h6 class="text-muted small text-uppercase fw-bold mb-1">Expenses (AP)</h6>
                             <h3 class="fw-bold mb-0 text-danger">$${apTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
-                            <p class="text-muted small mt-2 mb-0">Outstanding bills to pay</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card border-0 shadow-sm card-stats h-100">
+                    <div class="card border-0 shadow-sm h-100 overflow-hidden" style="border-radius: 15px;">
                         <div class="card-body p-4">
-                            <div class="d-flex justify-content-between mb-3">
-                                <div class="finance-icon bg-warning-subtle text-warning">
-                                    <i class="bi bi-hourglass-split fs-4"></i>
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="bg-warning bg-opacity-10 text-warning rounded p-2">
+                                    <i class="bi bi-people-fill fs-4"></i>
                                 </div>
+                                <span class="badge bg-info-subtle text-info border-0 small">${users.length} Staff</span>
                             </div>
-                            <h6 class="text-muted small text-uppercase fw-bold mb-1">Pending Invoices</h6>
-                            <h3 class="fw-bold mb-0">$${pendingAR.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
-                            <div class="progress mt-3" style="height: 6px;">
-                                <div class="progress-bar bg-warning" style="width: ${(pendingAR/arTotal*100) || 0}%"></div>
-                            </div>
+                            <h6 class="text-muted small text-uppercase fw-bold mb-1">Est. Weekly Payroll</h6>
+                            <h3 class="fw-bold mb-0 text-dark">$${weeklyPayroll.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card border-0 shadow-sm card-stats h-100 bg-primary text-white">
+                    <div class="card border-0 shadow-sm h-100 bg-dark text-white overflow-hidden" style="border-radius: 15px;">
                         <div class="card-body p-4">
-                            <div class="d-flex justify-content-between mb-3">
-                                <div class="finance-icon bg-white bg-opacity-25">
-                                    <i class="bi bi-safe fs-4"></i>
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="bg-white bg-opacity-20 rounded p-2">
+                                    <i class="bi bi-safe2 fs-4"></i>
                                 </div>
+                                <i class="bi bi-shield-check text-success fs-5"></i>
                             </div>
-                            <h6 class="text-white-50 small text-uppercase fw-bold mb-1">Net Profit Margin</h6>
+                            <h6 class="text-white-50 small text-uppercase fw-bold mb-1">Net Cash Position</h6>
                             <h3 class="fw-bold mb-0">$${(arTotal - apTotal).toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
-                            <p class="text-white-50 small mt-2 mb-0">Projected cash on hand</p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="card border-0 shadow-sm overflow-hidden">
-                <div class="card-header bg-white py-0 border-bottom">
-                    <ul class="nav nav-tabs border-0" id="financeTabs" role="tablist">
-                        <li class="nav-item">
-                            <a class="nav-link active py-3 px-4 fw-bold" href="#" onclick="app.loadFinanceView('ar')">
-                                <i class="bi bi-file-earmark-arrow-down me-2"></i> Receivables
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link py-3 px-4 fw-bold" href="#" onclick="app.loadFinanceView('ap')">
-                                <i class="bi bi-file-earmark-arrow-up me-2"></i> Payables
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link py-3 px-4 fw-bold" href="#" onclick="app.showAlert('info', 'Budget tracking coming in next update')">
-                                <i class="bi bi-calculator me-2"></i> Job Costing
-                            </a>
-                        </li>
-                    </ul>
+            <!-- Tabbed Accounting Views -->
+            <ul class="nav nav-pills mb-4 bg-white p-2 rounded-3 shadow-sm border mx-0" id="accountingTabs" role="tablist">
+                <li class="nav-item">
+                    <button class="nav-link active fw-bold" id="overview-tab" data-bs-toggle="pill" data-bs-target="#financeOverview" type="button">Dashboard</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link fw-bold" id="payroll-tab" data-bs-toggle="pill" data-bs-target="#payrollPanel" type="button">Payroll & Staffing</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link fw-bold" id="receivables-tab" data-bs-toggle="pill" data-bs-target="#receivablesPanel" type="button" onclick="app.loadFinanceView('ar')">Receivables (AR)</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link fw-bold" id="payables-tab" data-bs-toggle="pill" data-bs-target="#payablesPanel" type="button" onclick="app.loadFinanceView('ap')">Payables (AP)</button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="accountingTabContent">
+                <!-- Overview Panel -->
+                <div class="tab-pane fade show active" id="financeOverview">
+                    <div class="card border-0 shadow-sm" style="border-radius: 15px;">
+                        <div class="card-body p-0">
+                            <div class="p-4 border-bottom bg-light bg-opacity-25">
+                                <h5 class="fw-bold mb-0">Recent Transactions</h5>
+                            </div>
+                            <div id="recentTransactionsContainer"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="card-body p-0 bg-light" id="financeViewContainer">
-                    <!-- Data table loads here -->
+
+                <!-- Payroll Panel -->
+                <div class="tab-pane fade" id="payrollPanel">
+                    <div class="card border-0 shadow-sm overflow-hidden" style="border-radius: 15px;">
+                        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0 fw-bold">Employee Ledger & Compensation</h5>
+                            <button class="btn btn-sm btn-outline-primary" onclick="app.loadModule('team')">Manage Team</button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="bg-light text-muted small text-uppercase">
+                                        <tr>
+                                            <th class="ps-4 py-3">Team Member</th>
+                                            <th class="py-3">Role / Dept</th>
+                                            <th class="py-3">Type</th>
+                                            <th class="py-3">Pay Rate</th>
+                                            <th class="py-3">Hire Date</th>
+                                            <th class="text-end pe-4 py-3">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${users.map(u => `
+                                            <tr>
+                                                <td class="ps-4">
+                                                    <div class="fw-bold text-dark">${u.firstName} ${u.lastName}</div>
+                                                    <small class="text-muted">${u.email || u.username}</small>
+                                                </td>
+                                                <td><span class="small fw-medium">${this.getRoleDisplayName(u.role)}</span></td>
+                                                <td><span class="badge bg-light text-dark border px-2 py-1">${u.type || 'Hourly'}</span></td>
+                                                <td class="fw-bold text-dark">$${parseFloat(u.payRate || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                <td><small class="text-muted">${u.hireDate || 'N/A'}</small></td>
+                                                <td class="text-end pe-4">
+                                                    <button class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold" onclick="app.showEditUserModal('${u.id}')">Adjust Wage</button>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="receivablesPanel">
+                    <div id="financeViewContainerAR" class="bg-white rounded-3 shadow-sm"></div>
+                </div>
+                <div class="tab-pane fade" id="payablesPanel">
+                    <div id="financeViewContainerAP" class="bg-white rounded-3 shadow-sm"></div>
                 </div>
             </div>
         `;
         document.getElementById('mainContent').innerHTML = content;
-        this.loadFinanceView('ar');
+        
+        // Load background data
+        setTimeout(() => {
+            this.loadFinanceView('ar');
+            this.loadFinanceView('ap');
+            this.renderRecentTransactions();
+        }, 100);
     }
 
-    loadFinanceView(viewType) {
-        const container = document.getElementById('financeViewContainer');
-        if (!container) return;
+    renderRecentTransactions() {
+        const container = document.getElementById('recentTransactionsContainer');
+        if (!container || !window.dataManager) return;
+        
+        const transactions = [...window.dataManager.data.finance].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+        
+        if (transactions.length === 0) {
+            container.innerHTML = '<div class="p-5 text-center text-muted">No transactions recorded yet.</div>';
+            return;
+        }
 
-        // Update active tab UI
-        document.querySelectorAll('#financeTabs .nav-link').forEach(link => {
-            link.classList.remove('active');
-            if ((viewType === 'ar' && link.textContent.includes('Receivables')) || 
-                (viewType === 'ap' && link.textContent.includes('Payables'))) {
-                link.classList.add('active');
-            }
-        });
+        container.innerHTML = `
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-light text-muted small text-uppercase">
+                    <tr>
+                        <th class="ps-4 py-2">Reference</th>
+                        <th class="py-2">Entity</th>
+                        <th class="py-2">Amount</th>
+                        <th class="py-2">Status</th>
+                        <th class="text-end pe-4 py-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${transactions.map(t => `
+                        <tr>
+                            <td class="ps-4"><span class="fw-bold text-primary">${t.reference}</span><br><small class="text-muted">${new Date(t.date).toLocaleDateString()}</small></td>
+                            <td><div class="fw-bold text-dark">${t.entity}</div><small class="text-muted">${t.type.toUpperCase()}</small></td>
+                            <td class="fw-bold ${t.type === 'ap' ? 'text-danger' : 'text-success'}">$${parseFloat(t.amount).toLocaleString()}</td>
+                            <td><span class="badge ${this.getFinanceStatusBadge(t.status)}">${t.status}</span></td>
+                            <td class="text-end pe-4">
+                                <button class="btn btn-sm btn-light border" onclick="app.viewTransaction('${t.id}')"><i class="bi bi-eye"></i></button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+    loadFinanceView(viewType) {
+        const containerId = viewType === 'ar' ? 'financeViewContainerAR' : 'financeViewContainerAP';
+        const container = document.getElementById(containerId);
+        if (!container) return;
 
         const transactions = window.dataManager ? window.dataManager.data.finance.filter(t => t.type === viewType) : [];
 
@@ -1478,17 +1477,17 @@ class ConstructProApp {
                                     </span>
                                 </td>
                                 <td class="text-end pe-4">
-                                    <div class="btn-group">
-                                        <button class="btn btn-sm btn-white border" onclick="app.viewTransaction(${t.id})" title="View Details">
-                                            <i class="bi bi-eye"></i>
+                                    <div class="btn-group shadow-sm rounded-2 overflow-hidden">
+                                        <button class="btn btn-sm btn-white border-end" onclick="app.viewTransaction('${t.id}')" title="View Details">
+                                            <i class="bi bi-eye-fill text-primary"></i>
                                         </button>
                                         ${t.status !== 'paid' ? `
-                                            <button class="btn btn-sm btn-success border" onclick="app.payTransaction(${t.id})" title="Mark as Paid">
-                                                <i class="bi bi-check2-circle"></i>
+                                            <button class="btn btn-sm btn-white border-end" onclick="app.payTransaction('${t.id}')" title="Mark as Paid">
+                                                <i class="bi bi-check-circle-fill text-success"></i>
                                             </button>
                                         ` : ''}
-                                        <button class="btn btn-sm btn-white border text-danger" onclick="app.deleteTransaction(${t.id})" title="Delete Record">
-                                            <i class="bi bi-trash"></i>
+                                        <button class="btn btn-sm btn-white" onclick="app.deleteTransaction('${t.id}')" title="Delete Record">
+                                            <i class="bi bi-trash3-fill text-danger"></i>
                                         </button>
                                     </div>
                                 </td>
@@ -1663,6 +1662,7 @@ class ConstructProApp {
             window.dataManager.saveData('finance');
             
             this.showAlert('success', 'Transaction successfully committed to ledger');
+            this.addActivityFeedItem(this.currentUser.firstName, `created a new ${type.toUpperCase()} transaction for ${data.entity}`, 'finance');
             bootstrap.Modal.getInstance(document.getElementById('newTransactionModal')).hide();
             this.loadFinance();
         }
@@ -1708,7 +1708,7 @@ class ConstructProApp {
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                            ${trans.status !== 'paid' ? `<button type="button" class="btn btn-success" onclick="app.payTransaction(${trans.id})">Mark as Paid</button>` : ''}
+                            ${trans.status !== 'paid' ? `<button type="button" class="btn btn-success" onclick="app.payTransaction('${trans.id}')">Mark as Paid</button>` : ''}
                         </div>
                     </div>
                 </div>
@@ -1875,7 +1875,27 @@ class ConstructProApp {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        ${userEntries.length === 0 ? '<tr><td colspan="4" class="text-center py-5 text-muted">No shift history found</td></tr>' : ''}
+                                        ${this.clockInTime ? `
+                                            <tr class="table-primary border-start border-4 border-primary">
+                                                <td class="ps-4">
+                                                    <div class="fw-bold text-primary">${new Date(this.clockInTime).toLocaleDateString()}</div>
+                                                    <small class="text-muted">Clocked in at ${new Date(this.clockInTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</small>
+                                                </td>
+                                                <td>
+                                                    <div class="fw-bold">${this.activeClockProjectName || 'Active Job'}</div>
+                                                    <small class="text-muted text-capitalize">${this.activeClockTask || 'General'}</small>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-success-subtle text-success border-0 fw-bold">
+                                                        <i class="bi bi-record-fill animate-pulse me-1"></i> IN PROGRESS
+                                                    </span>
+                                                </td>
+                                                <td class="text-end pe-4">
+                                                    <button class="btn btn-sm btn-outline-danger" onclick="app.handleClockAction('out')">Clock Out</button>
+                                                </td>
+                                            </tr>
+                                        ` : ''}
+                                        ${userEntries.length === 0 && !this.clockInTime ? '<tr><td colspan="4" class="text-center py-5 text-muted">No shift history found</td></tr>' : ''}
                                         ${userEntries.sort((a,b) => new Date(b.clock_in) - new Date(a.clock_in)).slice(0, 8).map(entry => `
                                             <tr>
                                                 <td class="ps-4">
@@ -1892,7 +1912,7 @@ class ConstructProApp {
                                                     </span>
                                                 </td>
                                                 <td class="text-end pe-4">
-                                                    <button class="btn btn-sm btn-link text-primary" onclick="app.viewTimeEntry(${entry.id})"><i class="bi bi-info-circle"></i></button>
+                                                    <button class="btn btn-sm btn-link text-primary" onclick="app.viewTimeEntry('${entry.id}')"><i class="bi bi-info-circle"></i></button>
                                                 </td>
                                             </tr>
                                         `).join('')}
@@ -2161,135 +2181,163 @@ class ConstructProApp {
                     </div>
                 `;
                 break;
+            case 'notifications':
+                settingsHtml = `
+                    <h5 class="fw-bold mb-4">Notification Preferences</h5>
+                    <div class="list-group list-group-flush">
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            <div>
+                                <h6 class="mb-1">Direct Messages</h6>
+                                <p class="text-muted small mb-0">Receive alerts when someone messages you</p>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" checked>
+                            </div>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            <div>
+                                <h6 class="mb-1">Project Updates</h6>
+                                <p class="text-muted small mb-0">Alerts when a task is completed or updated</p>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" checked>
+                            </div>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            <div>
+                                <h6 class="mb-1">Financial Alerts</h6>
+                                <p class="text-muted small mb-0">Notifications for overdue bills or payments</p>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch">
+                            </div>
+                        </div>
+                    </div>
+                `;
+                break;
             default:
-                settingsHtml = `<p class="text-muted">Coming soon...</p>`;
+                settingsHtml = `
+                    <div class="text-center py-5">
+                        <i class="bi bi-gear-wide-connected display-4 text-muted opacity-25"></i>
+                        <p class="mt-3 text-muted">Select a settings category from the left menu.</p>
+                    </div>
+                `;
         }
         container.innerHTML = settingsHtml;
     }
 
-    deleteAdminUser(id) {
-        if (id === this.currentUser.id) {
-            this.showAlert('danger', 'You cannot delete your own account');
+
+    loadAdmin() {
+        if (!window.authManager.hasPermission('admin')) {
+            document.getElementById('mainContent').innerHTML = `
+                <div class="alert alert-danger m-4">
+                    <i class="bi bi-shield-lock me-2"></i> Access Denied: Administrator privileges required.
+                </div>
+            `;
             return;
         }
 
-        if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-            if (window.authManager) {
-                const index = window.authManager.users.findIndex(u => u.id === id);
-                if (index !== -1) {
-                    window.authManager.users.splice(index, 1);
-                    window.authManager.saveUsers();
-                    this.showAlert('success', 'User deleted successfully');
-                    this.loadAdmin();
-                }
-            }
-        }
-    }
-
-    showEditUserModal(id) {
-        const user = window.authManager.users.find(u => u.id === id);
-        if (!user) return;
-
-        const modalId = 'editUserModal';
-        let modal = document.getElementById(modalId);
-        if (modal) modal.remove();
-
-        const modalHtml = `
-            <div class="modal fade" id="${modalId}" tabindex="-1">
-                <div class="modal-dialog modal-lg">
-                    <div class="modal-content border-0 shadow-lg">
-                        <div class="modal-header bg-primary text-white">
-                            <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i> Edit User: ${user.firstName} ${user.lastName}</h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body p-4">
-                            <form id="editUserForm">
-                                <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label class="form-label small fw-bold">First Name</label>
-                                        <input type="text" class="form-control" name="firstName" value="${user.firstName}" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label small fw-bold">Last Name</label>
-                                        <input type="text" class="form-control" name="lastName" value="${user.lastName}" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label small fw-bold">Username</label>
-                                        <input type="text" class="form-control" name="username" value="${user.username}" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label small fw-bold">Email</label>
-                                        <input type="email" class="form-control" name="email" value="${user.email}" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label small fw-bold">Role</label>
-                                        <select class="form-select" name="role">
-                                            <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Company Owner</option>
-                                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrator</option>
-                                            <option value="project_manager" ${user.role === 'project_manager' ? 'selected' : ''}>Project Manager</option>
-                                            <option value="estimator" ${user.role === 'estimator' ? 'selected' : ''}>Estimator</option>
-                                            <option value="superintendent" ${user.role === 'superintendent' ? 'selected' : ''}>Superintendent</option>
-                                            <option value="field_manager" ${user.role === 'field_manager' ? 'selected' : ''}>Field Manager</option>
-                                            <option value="foreman" ${user.role === 'foreman' ? 'selected' : ''}>Foreman</option>
-                                            <option value="laborer" ${user.role === 'laborer' ? 'selected' : ''}>Laborer</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label small fw-bold">Employment Type</label>
-                                        <select class="form-select" name="type">
-                                            <option value="Full-Time" ${user.type === 'Full-Time' ? 'selected' : ''}>Full-Time</option>
-                                            <option value="Contractor" ${user.type === 'Contractor' ? 'selected' : ''}>Contractor</option>
-                                            <option value="Part-Time" ${user.type === 'Part-Time' ? 'selected' : ''}>Part-Time</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-12 mt-4">
-                                        <h6 class="fw-bold mb-3 border-bottom pb-2">Granular Permissions Overrides</h6>
-                                        <div class="row g-2">
-                                            ${['finance', 'daily-logs', 'team', 'blueprints', 'takeoff', 'schedule'].map(perm => `
-                                                <div class="col-md-4">
-                                                    <div class="form-check form-check-inline">
-                                                        <input class="form-check-input" type="checkbox" name="permissions" value="${perm}" id="perm_${perm}" ${user.permissions?.includes(perm) ? 'checked' : ''}>
-                                                        <label class="form-check-label text-capitalize" for="perm_${perm}">${perm.replace('-', ' ')}</label>
-                                                    </div>
-                                                </div>
-                                            `).join('')}
-                                        </div>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                        <div class="modal-footer bg-light">
-                            <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
-                            <button type="button" class="btn btn-primary px-4" onclick="app.saveUserChanges('${id}')">Save Changes</button>
+        const users = window.authManager ? window.authManager.users : [];
+        
+        const content = `
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-1 fw-bold"><i class="bi bi-shield-lock-fill text-dark"></i> Admin Control Center</h2>
+                            <p class="text-muted">System-wide user management and security settings</p>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <div class="row g-4 mb-4">
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-4">
+                            <h6 class="text-muted small text-uppercase fw-bold mb-3">Total Users</h6>
+                            <div class="d-flex align-items-center">
+                                <h2 class="mb-0 fw-bold me-2">${users.length}</h2>
+                                <span class="badge bg-success-subtle text-success">Active</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-4">
+                            <h6 class="text-muted small text-uppercase fw-bold mb-3">System Load</h6>
+                            <h2 class="mb-0 fw-bold">Optimal</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-4">
+                            <h6 class="text-muted small text-uppercase fw-bold mb-3">Data Storage</h6>
+                            <h2 class="mb-0 fw-bold">1.2 MB</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">User Management</h5>
+                    <button class="btn btn-sm btn-primary" onclick="app.showAddAdminUserModal()">
+                        <i class="bi bi-plus-lg"></i> Add User
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4">User</th>
+                                    <th>Role / Type</th>
+                                    <th>Company</th>
+                                    <th>Last Login</th>
+                                    <th>Status</th>
+                                    <th class="text-end pe-4">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${users.map(user => `
+                                    <tr>
+                                        <td class="ps-4">
+                                            <div class="d-flex align-items-center">
+                                                <div class="bg-primary-subtle text-primary rounded-circle p-2 me-3" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                                                    <span class="fw-bold">${user.firstName[0]}${user.lastName[0]}</span>
+                                                </div>
+                                                <div>
+                                                    <div class="fw-bold">${user.firstName} ${user.lastName}</div>
+                                                    <small class="text-muted">${user.username} | ${user.email}</small>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="fw-bold small text-primary">${this.getRoleDisplayName(user.role)}</div>
+                                            <div class="text-muted" style="font-size: 0.75rem;">${user.type || 'Hourly'} - $${parseFloat(user.payRate || 0).toFixed(2)}</div>
+                                        </td>
+                                        <td>${user.company}</td>
+                                        <td><small>${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}</small></td>
+                                        <td><span class="badge ${user.isActive ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}">${user.isActive ? 'Active' : 'Inactive'}</span></td>
+                                        <td class="text-end pe-4">
+                                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="app.showEditUserModal('${user.id}')" title="Edit Permissions"><i class="bi bi-shield-check"></i></button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="app.deleteAdminUser('${user.id}')" title="Remove User"><i class="bi bi-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         `;
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        new bootstrap.Modal(document.getElementById(modalId)).show();
+        document.getElementById('mainContent').innerHTML = content;
     }
 
-    saveUserChanges(id) {
-        const form = document.getElementById('editUserForm');
-        const formData = new FormData(form);
-        const data = Object.fromEntries(formData.entries());
-        
-        // Handle multi-select permissions
-        const permissions = [];
-        form.querySelectorAll('input[name="permissions"]:checked').forEach(cb => {
-            permissions.push(cb.value);
-        });
-        data.permissions = permissions;
 
-        if (window.authManager) {
-            window.authManager.updateUser(id, data);
-            bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
-            this.showAlert('success', 'User updated successfully');
-            if (this.currentModule === 'admin') this.loadAdmin();
-            if (this.currentModule === 'team') this.loadTeam();
-        }
-    }
 
     showTimesheetModal() {
         const timeEntries = window.dataManager ? window.dataManager.data.time_entries : [];
@@ -2330,13 +2378,11 @@ class ConstructProApp {
                                                 <td class="text-capitalize">${entry.task || 'General'}</td>
                                                 <td>${new Date(entry.clock_in).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
                                                 <td>${entry.clock_out ? new Date(entry.clock_out).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '<span class="text-danger">Active</span>'}</td>
-                                                <td>
-                                                    <span class="badge bg-light text-dark border">
-                                                        ${entry.duration_minutes ? (entry.duration_minutes / 60).toFixed(1) + ' hrs' : '-'}
-                                                    </span>
-                                                </td>
+                                                <td>${entry.duration || '-'}</td>
                                                 <td class="text-end pe-4">
-                                                    <span class="badge bg-success-subtle text-success">APPROVED</span>
+                                                    <span class="badge ${entry.clock_out ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'}">
+                                                        ${entry.clock_out ? 'Completed' : 'In Progress'}
+                                                    </span>
                                                 </td>
                                             </tr>
                                         `).join('')}
@@ -2344,153 +2390,13 @@ class ConstructProApp {
                                 </table>
                             </div>
                         </div>
-                        <div class="modal-footer bg-light">
-                            <button class="btn btn-outline-secondary" onclick="app.exportTimesheetCSV()">Export CSV</button>
-                            <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">Close</button>
-                        </div>
                     </div>
                 </div>
             </div>
         `;
         document.body.insertAdjacentHTML('beforeend', modalHtml);
-        new bootstrap.Modal(document.getElementById(modalId)).show();
-    }
-
-    exportTimesheetCSV() {
-        const timeEntries = window.dataManager ? window.dataManager.data.time_entries : [];
-        const userEntries = timeEntries.filter(e => e.user_id === this.currentUser.id);
-        
-        let csv = 'Date,Project,Task,Clock In,Clock Out,Duration (Hrs)\n';
-        userEntries.forEach(e => {
-            csv += `${new Date(e.clock_in).toLocaleDateString()},${e.project_name},${e.task || 'General'},${new Date(e.clock_in).toLocaleTimeString()},${e.clock_out ? new Date(e.clock_out).toLocaleTimeString() : 'Active'},${(e.duration_minutes / 60).toFixed(2)}\n`;
-        });
-        
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.setAttribute('hidden', '');
-        a.setAttribute('href', url);
-        a.setAttribute('download', `Timesheet_${this.currentUser.lastName}_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    }
-
-    toggleDarkMode(enabled) {
-        if (enabled) {
-            document.body.classList.add('dark-mode');
-            localStorage.setItem('constructpro_dark_mode', 'true');
-        } else {
-            document.body.classList.remove('dark-mode');
-            localStorage.setItem('constructpro_dark_mode', 'false');
-        }
-        this.showAlert('info', `Dark mode ${enabled ? 'enabled' : 'disabled'}`);
-    }
-
-    viewTimeEntry(id) {
-        const entry = window.dataManager.data.time_entries.find(e => e.id === id);
-        if (entry) {
-            this.showAlert('info', `Shift Details: ${entry.project_name} - ${entry.task || 'General Work'}`);
-        }
-    }
-
-    loadAdmin() {
-        const users = window.authManager ? window.authManager.users : [];
-        const content = `
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h2 class="mb-1 fw-bold"><i class="bi bi-shield-lock text-danger"></i> Admin Control Center</h2>
-                            <p class="text-muted">System management and user oversight</p>
-                        </div>
-                        <div class="btn-group">
-                            <button class="btn btn-outline-primary" onclick="app.loadModule('admin')">
-                                <i class="bi bi-arrow-clockwise me-1"></i> Refresh Data
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row g-4 mb-4">
-                <div class="col-md-4">
-                    <div class="card border-0 shadow-sm h-100">
-                        <div class="card-body p-4 border-start border-4 border-primary">
-                            <h6 class="text-muted small text-uppercase fw-bold">Total Users</h6>
-                            <h2 class="mb-0 fw-bold">${users.length}</h2>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card border-0 shadow-sm h-100">
-                        <div class="card-body p-4 border-start border-4 border-success">
-                            <h6 class="text-muted small text-uppercase fw-bold">Active Sessions</h6>
-                            <h2 class="mb-0 fw-bold">1</h2>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card border-0 shadow-sm h-100">
-                        <div class="card-body p-4 border-start border-4 border-warning">
-                            <h6 class="text-muted small text-uppercase fw-bold">Storage Used</h6>
-                            <h2 class="mb-0 fw-bold">1.2 MB</h2>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold">User Management</h5>
-                    <button class="btn btn-sm btn-primary" onclick="app.showAddAdminUserModal()">
-                        <i class="bi bi-plus-lg"></i> Add User
-                    </button>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="bg-light">
-                                <tr>
-                                    <th class="ps-4">User</th>
-                                    <th>Company</th>
-                                    <th>Role</th>
-                                    <th>Last Login</th>
-                                    <th>Status</th>
-                                    <th class="text-end pe-4">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${users.map(user => `
-                                    <tr>
-                                        <td class="ps-4">
-                                            <div class="d-flex align-items-center">
-                                                <div class="bg-light rounded-circle p-2 me-3">
-                                                    <i class="bi bi-person text-primary"></i>
-                                                </div>
-                                                <div>
-                                                    <div class="fw-bold">${user.firstName} ${user.lastName}</div>
-                                                    <small class="text-muted">${user.username} | ${user.email}</small>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td>${user.company}</td>
-                                        <td><span class="badge bg-primary-subtle text-primary">${this.getRoleDisplayName(user.role)}</span></td>
-                                        <td><small>${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}</small></td>
-                                        <td><span class="badge bg-success-subtle text-success">Active</span></td>
-                                        <td class="text-end pe-4">
-                                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="app.showEditUserModal('${user.id}')"><i class="bi bi-pencil"></i></button>
-                                            <button class="btn btn-sm btn-outline-danger" onclick="app.deleteAdminUser('${user.id}')"><i class="bi bi-trash"></i></button>
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.getElementById('mainContent').innerHTML = content;
+        const bsModal = new bootstrap.Modal(document.getElementById(modalId));
+        bsModal.show();
     }
 
     showAddAdminUserModal() {
@@ -2498,8 +2404,8 @@ class ConstructProApp {
             <div class="modal fade" id="addAdminUserModal" tabindex="-1">
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content border-0 shadow-lg">
-                        <div class="modal-header bg-danger text-white">
-                            <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i> Add System User</h5>
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i> Register Team Member</h5>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body p-4">
@@ -2507,46 +2413,68 @@ class ConstructProApp {
                                 <div class="row g-3">
                                     <div class="col-md-6">
                                         <label class="form-label fw-bold small">First Name</label>
-                                        <input type="text" class="form-control" name="firstName" required>
+                                        <input type="text" class="form-control shadow-sm" name="firstName" required>
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label fw-bold small">Last Name</label>
-                                        <input type="text" class="form-control" name="lastName" required>
+                                        <input type="text" class="form-control shadow-sm" name="lastName" required>
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label fw-bold small">Email Address</label>
-                                        <input type="email" class="form-control" name="email" required>
+                                        <input type="email" class="form-control shadow-sm" name="email" required>
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label fw-bold small">Username</label>
-                                        <input type="text" class="form-control" name="username" required>
+                                        <input type="text" class="form-control shadow-sm" name="username" required>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label fw-bold small">Role</label>
-                                        <select class="form-select" name="role" required>
-                                            <option value="owner">Company Owner (Admin)</option>
+                                        <label class="form-label fw-bold small">Initial Password</label>
+                                        <input type="password" class="form-control shadow-sm" name="password" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Base Role</label>
+                                        <select class="form-select shadow-sm" name="role" required onchange="app.handleRoleChange(this.value)">
+                                            <option value="owner">Company Owner</option>
+                                            <option value="admin">Administrator</option>
                                             <option value="project_manager">Project Manager</option>
                                             <option value="estimator">Estimator</option>
                                             <option value="superintendent">Superintendent</option>
                                             <option value="field_manager">Field Manager</option>
-                                            <option value="contractor">General Contractor</option>
+                                            <option value="foreman">Foreman</option>
+                                            <option value="laborer" selected>General Laborer</option>
                                             <option value="subcontractor">Subcontractor</option>
+                                            <option value="demolition">Demolition Contractor</option>
+                                            <option value="chimney_sweep">Chimney Sweep</option>
                                         </select>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label fw-bold small">Password</label>
-                                        <input type="password" class="form-control" name="password" required>
+                                        <label class="form-label fw-bold small">Employment Type</label>
+                                        <select class="form-select shadow-sm" name="type" required>
+                                            <option value="Hourly">Hourly</option>
+                                            <option value="Salary">Salary</option>
+                                            <option value="Contractor">Sub-Contractor</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Pay Rate / Salary ($)</label>
+                                        <div class="input-group shadow-sm">
+                                            <span class="input-group-text bg-light">$</span>
+                                            <input type="number" class="form-control" name="payRate" placeholder="0.00" step="0.01">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Hire Date</label>
+                                        <input type="date" class="form-control shadow-sm" name="hireDate" value="${new Date().toISOString().split('T')[0]}">
                                     </div>
                                     
-                                    <div class="col-12">
-                                        <hr>
-                                        <h6 class="fw-bold mb-3">Custom Permissions Overrides</h6>
+                                    <div class="col-12 mt-4">
+                                        <h6 class="fw-bold mb-3 border-bottom pb-2">Module-Specific Permissions</h6>
                                         <div class="row row-cols-2 row-cols-md-3 g-2">
                                             ${['projects', 'schedule', 'blueprints', 'takeoff', 'daily-logs', 'team', 'finance', 'contracts', 'clients', 'timeclock', 'admin'].map(p => `
                                                 <div class="col">
                                                     <div class="form-check">
-                                                        <input class="form-check-input" type="checkbox" name="permissions" value="${p}" id="perm_${p}">
-                                                        <label class="form-check-label small" for="perm_${p}">
+                                                        <input class="form-check-input" type="checkbox" name="permissions" value="${p}" id="new_perm_${p}">
+                                                        <label class="form-check-label small" for="new_perm_${p}">
                                                             ${p.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                                                         </label>
                                                     </div>
@@ -2557,9 +2485,9 @@ class ConstructProApp {
                                 </div>
                             </form>
                         </div>
-                        <div class="modal-footer bg-light">
-                            <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
-                            <button type="button" class="btn btn-danger px-4" onclick="app.saveAdminUser()">Create User</button>
+                        <div class="modal-footer bg-light border-0">
+                            <button type="button" class="btn btn-white border px-4" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary px-4 shadow-sm" onclick="app.saveAdminUser()">Create Member</button>
                         </div>
                     </div>
                 </div>
@@ -2575,12 +2503,19 @@ class ConstructProApp {
 
     saveAdminUser() {
         const form = document.getElementById('addAdminUserForm');
+        if (!form) return;
+        
         const formData = new FormData(form);
         const data = Object.fromEntries(formData.entries());
         
-        // Get permissions from checkboxes
+        // Handle multi-select permissions
         const permissions = Array.from(form.querySelectorAll('input[name="permissions"]:checked')).map(cb => cb.value);
         
+        if (!data.username || !data.password) {
+            this.showAlert('danger', 'Username and password are required');
+            return;
+        }
+
         if (window.authManager) {
             const newUser = {
                 id: Date.now().toString(),
@@ -2589,6 +2524,9 @@ class ConstructProApp {
                 email: data.email,
                 username: data.username,
                 role: data.role,
+                type: data.type,
+                payRate: data.payRate || 0,
+                hireDate: data.hireDate,
                 company: this.currentUser?.company || 'My Company',
                 password: window.authManager.hashPassword(data.password),
                 permissions: permissions,
@@ -2598,9 +2536,17 @@ class ConstructProApp {
             
             window.authManager.users.push(newUser);
             window.authManager.saveUsers();
-            this.showAlert('success', `User ${data.firstName} created successfully!`);
-            bootstrap.Modal.getInstance(document.getElementById('addAdminUserModal')).hide();
-            this.loadModule('team');
+            
+            this.showAlert('success', `Team member account created for ${data.firstName}`);
+            this.addActivityFeedItem(this.currentUser.firstName, `added ${data.firstName} ${data.lastName} to the team`, 'team');
+            const modalElement = document.getElementById('addAdminUserModal');
+            if (modalElement) {
+                const modal = bootstrap.Modal.getInstance(modalElement);
+                if (modal) modal.hide();
+            }
+            
+            this.loadTeam();
+            if (this.currentModule === 'admin') this.loadAdmin();
         }
     }
 
@@ -2613,7 +2559,7 @@ class ConstructProApp {
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content border-0 shadow-lg">
                         <div class="modal-header bg-primary text-white">
-                            <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i> Edit Member Settings</h5>
+                            <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i> Edit Member: ${user.firstName} ${user.lastName}</h5>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body p-4">
@@ -2621,42 +2567,68 @@ class ConstructProApp {
                                 <input type="hidden" name="userId" value="${user.id}">
                                 <div class="row g-3">
                                     <div class="col-md-6">
-                                        <label class="form-label fw-bold small">First Name</label>
-                                        <input type="text" class="form-control" name="firstName" value="${user.firstName}" required>
+                                        <label class="form-label fw-bold small text-muted text-uppercase">First Name</label>
+                                        <input type="text" class="form-control shadow-sm" name="firstName" value="${user.firstName}" required>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label fw-bold small">Last Name</label>
-                                        <input type="text" class="form-control" name="lastName" value="${user.lastName}" required>
+                                        <label class="form-label fw-bold small text-muted text-uppercase">Last Name</label>
+                                        <input type="text" class="form-control shadow-sm" name="lastName" value="${user.lastName}" required>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label fw-bold small">Role</label>
-                                        <select class="form-select" name="role">
+                                        <label class="form-label fw-bold small text-muted text-uppercase">Email Address</label>
+                                        <input type="email" class="form-control shadow-sm" name="email" value="${user.email}" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-muted text-uppercase">Base Role</label>
+                                        <select class="form-select shadow-sm" name="role" required onchange="app.handleRoleChange(this.value)">
+                                            <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Company Owner</option>
                                             <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrator</option>
                                             <option value="project_manager" ${user.role === 'project_manager' ? 'selected' : ''}>Project Manager</option>
-                                            <option value="superintendent" ${user.role === 'superintendent' ? 'selected' : ''}>Superintendent</option>
                                             <option value="estimator" ${user.role === 'estimator' ? 'selected' : ''}>Estimator</option>
+                                            <option value="superintendent" ${user.role === 'superintendent' ? 'selected' : ''}>Superintendent</option>
                                             <option value="field_manager" ${user.role === 'field_manager' ? 'selected' : ''}>Field Manager</option>
-                                            <option value="contractor" ${user.role === 'contractor' ? 'selected' : ''}>General Contractor</option>
+                                            <option value="foreman" ${user.role === 'foreman' ? 'selected' : ''}>Foreman</option>
+                                            <option value="laborer" ${user.role === 'laborer' ? 'selected' : ''}>General Laborer</option>
                                             <option value="subcontractor" ${user.role === 'subcontractor' ? 'selected' : ''}>Subcontractor</option>
+                                            <option value="demolition" ${user.role === 'demolition' ? 'selected' : ''}>Demolition Contractor</option>
+                                            <option value="chimney_sweep" ${user.role === 'chimney_sweep' ? 'selected' : ''}>Chimney Sweep</option>
                                         </select>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label fw-bold small">Status</label>
-                                        <select class="form-select" name="isActive">
+                                        <label class="form-label fw-bold small text-muted text-uppercase">Employment Type</label>
+                                        <select class="form-select shadow-sm" name="type">
+                                            <option value="Hourly" ${user.type === 'Hourly' ? 'selected' : ''}>Hourly</option>
+                                            <option value="Salary" ${user.type === 'Salary' ? 'selected' : ''}>Salary</option>
+                                            <option value="Contractor" ${user.type === 'Contractor' ? 'selected' : ''}>Sub-Contractor</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-muted text-uppercase">Pay Rate / Salary ($)</label>
+                                        <div class="input-group shadow-sm">
+                                            <span class="input-group-text bg-light fw-bold">$</span>
+                                            <input type="number" class="form-control fw-bold" name="payRate" value="${user.payRate || 0}" step="0.01">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-muted text-uppercase">Hire Date</label>
+                                        <input type="date" class="form-control shadow-sm" name="hireDate" value="${user.hireDate || ''}">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-muted text-uppercase">Status</label>
+                                        <select class="form-select shadow-sm" name="isActive">
                                             <option value="true" ${user.isActive ? 'selected' : ''}>Active</option>
                                             <option value="false" ${!user.isActive ? 'selected' : ''}>Inactive</option>
                                         </select>
                                     </div>
                                     
-                                    <div class="col-12">
-                                        <hr>
-                                        <h6 class="fw-bold mb-3">Custom Permissions Overrides</h6>
+                                    <div class="col-12 mt-4">
+                                        <h6 class="fw-bold mb-3 border-bottom pb-2 text-dark">Granular Permissions Overrides</h6>
                                         <div class="row row-cols-2 row-cols-md-3 g-2">
                                             ${['projects', 'schedule', 'blueprints', 'takeoff', 'daily-logs', 'team', 'finance', 'contracts', 'clients', 'timeclock', 'admin'].map(p => `
                                                 <div class="col">
-                                                    <div class="form-check">
-                                                        <input class="form-check-input" type="checkbox" name="permissions" value="${p}" id="edit_perm_${p}" ${(user.permissions && user.permissions.includes(p)) ? 'checked' : ''}>
-                                                        <label class="form-check-label small" for="edit_perm_${p}">
+                                                    <div class="form-check card p-2 border-0 bg-light bg-opacity-50">
+                                                        <input class="form-check-input ms-0 me-2" type="checkbox" name="permissions" value="${p}" id="edit_perm_${p}" ${(user.permissions && user.permissions.includes(p)) ? 'checked' : ''}>
+                                                        <label class="form-check-label small fw-medium" for="edit_perm_${p}">
                                                             ${p.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                                                         </label>
                                                     </div>
@@ -2667,10 +2639,10 @@ class ConstructProApp {
                                 </div>
                             </form>
                         </div>
-                        <div class="modal-footer bg-light">
-                            <button type="button" class="btn btn-outline-danger me-auto" onclick="app.deleteAdminUser('${user.id}')">Delete Member</button>
-                            <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
-                            <button type="button" class="btn btn-primary px-4" onclick="app.updateAdminUser()">Save Changes</button>
+                        <div class="modal-footer bg-light border-0">
+                            <button type="button" class="btn btn-outline-danger me-auto px-4" onclick="app.deleteAdminUser('${user.id}')">Delete Member</button>
+                            <button type="button" class="btn btn-white border px-4" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary px-4 shadow-sm" onclick="app.updateAdminUser()">Save Changes</button>
                         </div>
                     </div>
                 </div>
@@ -2686,6 +2658,8 @@ class ConstructProApp {
 
     updateAdminUser() {
         const form = document.getElementById('editUserForm');
+        if (!form) return;
+        
         const formData = new FormData(form);
         const userId = formData.get('userId');
         const permissions = Array.from(form.querySelectorAll('input[name="permissions"]:checked')).map(cb => cb.value);
@@ -2693,15 +2667,42 @@ class ConstructProApp {
         const data = {
             firstName: formData.get('firstName'),
             lastName: formData.get('lastName'),
+            email: formData.get('email'),
             role: formData.get('role'),
+            type: formData.get('type'),
+            payRate: parseFloat(formData.get('payRate')) || 0,
+            hireDate: formData.get('hireDate'),
             isActive: formData.get('isActive') === 'true',
             permissions: permissions
         };
 
         if (window.authManager) {
             window.authManager.updateUser(userId, data);
-            bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
-            this.loadModule('team');
+            const modalElement = document.getElementById('editUserModal');
+            if (modalElement) {
+                const modal = bootstrap.Modal.getInstance(modalElement);
+                if (modal) modal.hide();
+            }
+            
+            // Refresh the current view
+            if (this.currentModule === 'team') this.loadTeam();
+            if (this.currentModule === 'admin') this.loadAdmin();
+            if (this.currentModule === 'finance') this.loadFinance();
+            
+            this.showAlert('success', 'User information updated successfully');
+        }
+    }
+
+    handleRoleChange(role) {
+        const typeSelect = document.querySelector('select[name="type"]');
+        if (typeSelect) {
+            if (role === 'subcontractor') {
+                typeSelect.value = 'Contractor';
+            } else if (['project_manager', 'estimator', 'owner', 'admin'].includes(role)) {
+                typeSelect.value = 'Salary';
+            } else {
+                typeSelect.value = 'Hourly';
+            }
         }
     }
 
@@ -2984,7 +2985,7 @@ class ConstructProApp {
                                         <button class="btn btn-outline-primary" onclick="app.shareProject(${this.currentProject.id}, 'print')" title="Print Project">
                                             <i class="bi bi-printer"></i>
                                         </button>
-                                        <button class="btn btn-outline-info" onclick="app.viewProject(${this.currentProject.id})" title="View Full Project">
+                                        <button class="btn btn-outline-info" onclick="app.viewProject('${this.currentProject.id}')" title="View Full Project">
                                             <i class="bi bi-eye"></i> View Details
                                         </button>
                                     </div>
@@ -3003,13 +3004,13 @@ class ConstructProApp {
                                     </div>
                                     <div class="col-md-4">
                                         <div class="d-grid gap-2">
-                                            <button class="btn btn-outline-primary btn-sm" onclick="app.addBlueprintToProject(${this.currentProject.id})">
+                                            <button class="btn btn-outline-primary btn-sm" onclick="app.addBlueprintToProject('${this.currentProject.id}')">
                                                 <i class="bi bi-file-earmark-image"></i> Add Blueprint
                                             </button>
-                                            <button class="btn btn-outline-success btn-sm" onclick="app.createTakeoffForProject(${this.currentProject.id})">
+                                            <button class="btn btn-outline-success btn-sm" onclick="app.createTakeoffForProject('${this.currentProject.id}')">
                                                 <i class="bi bi-calculator"></i> Create Takeoff
                                             </button>
-                                            <button class="btn btn-outline-info btn-sm" onclick="app.createEstimateForProject(${this.currentProject.id})">
+                                            <button class="btn btn-outline-info btn-sm" onclick="app.createEstimateForProject('${this.currentProject.id}')">
                                                 <i class="bi bi-currency-dollar"></i> New Estimate
                                             </button>
                                         </div>
@@ -3072,11 +3073,11 @@ class ConstructProApp {
                                 <button class="btn btn-outline-primary py-2" onclick="app.showAddClientModal()">
                                     <i class="bi bi-person-plus me-1"></i> Add Client
                                 </button>
-                                <button class="btn btn-outline-success py-2" onclick="app.loadModule('blueprints')">
-                                    <i class="bi bi-upload me-1"></i> Upload Blueprint
+                                <button class="btn btn-outline-success py-2" onclick="app.showNewTransactionModal()">
+                                    <i class="bi bi-currency-dollar me-1"></i> New Transaction
                                 </button>
-                                <button class="btn btn-outline-info py-2" onclick="app.loadModule('takeoff')">
-                                    <i class="bi bi-calculator me-1"></i> Start Takeoff
+                                <button class="btn btn-outline-dark py-2" onclick="app.loadModule('timeclock')">
+                                    <i class="bi bi-clock-history me-1"></i> Time Clock
                                 </button>
                             </div>
                         </div>
@@ -3106,8 +3107,8 @@ class ConstructProApp {
                             </ol>
                         </nav>
                         <div class="btn-group">
-                            <button class="btn btn-outline-primary" onclick="app.editProject(${project.id})"><i class="bi bi-pencil"></i> Edit</button>
-                            <button class="btn btn-primary" onclick="app.shareProject(${project.id}, 'print')"><i class="bi bi-printer"></i> Print Report</button>
+                            <button class="btn btn-outline-primary" onclick="app.editProject('${project.id}')"><i class="bi bi-pencil"></i> Edit</button>
+                            <button class="btn btn-primary" onclick="app.shareProject('${project.id}', 'print')"><i class="bi bi-printer"></i> Print Report</button>
                         </div>
                     </div>
                 </div>
@@ -3272,7 +3273,7 @@ class ConstructProApp {
                 
                 <h6 class="text-muted small text-uppercase fw-bold mb-2 ps-1" style="font-size: 0.65rem;">Project Links</h6>
                 <div class="list-group list-group-flush small mb-3">
-                    <a href="#" class="list-group-item list-group-item-action py-2 px-1 border-0 bg-transparent" onclick="app.viewProject(${this.currentProject.id})">
+                    <a href="#" class="list-group-item list-group-item-action py-2 px-1 border-0 bg-transparent" onclick="app.viewProject('${this.currentProject.id}')">
                         <i class="bi bi-eye text-primary me-2"></i> Project Overview
                     </a>
                     <a href="#" class="list-group-item list-group-item-action py-2 px-1 border-0 bg-transparent" onclick="app.loadModule('schedule')">
@@ -3356,7 +3357,7 @@ class ConstructProApp {
                                 <i class="bi bi-currency-dollar text-success"></i>
                                 <strong class="text-dark">$${parseFloat(project.budget || 0).toLocaleString()}</strong>
                             </div>
-                            <button class="btn btn-sm btn-primary px-3 shadow-sm" onclick="app.viewProject(${project.id})">
+                            <button class="btn btn-sm btn-primary px-3 shadow-sm" onclick="app.viewProject('${project.id}')">
                                 View Project
                             </button>
                         </div>
@@ -3565,8 +3566,8 @@ class ConstructProApp {
                         <div class="d-flex justify-content-between align-items-center pt-3 border-top">
                             <span class="badge bg-primary-subtle text-primary">${client.industry_name || 'General'}</span>
                             <div class="btn-group">
-                                <button class="btn btn-sm btn-outline-secondary" onclick="app.editClient(${client.id})"><i class="bi bi-pencil"></i></button>
-                                <button class="btn btn-sm btn-outline-primary" onclick="app.viewClientDetails(${client.id})"><i class="bi bi-eye"></i></button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="app.editClient('${client.id}')"><i class="bi bi-pencil"></i></button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="app.viewClientDetails('${client.id}')"><i class="bi bi-eye"></i></button>
                             </div>
                         </div>
                     </div>
@@ -3646,9 +3647,9 @@ class ConstructProApp {
                 </td>
                 <td class="text-end pe-4">
                     <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-primary" onclick="app.viewEstimate(${estimate.id})" title="View Details"><i class="bi bi-eye"></i></button>
-                        <button class="btn btn-outline-secondary" onclick="app.printEstimate(${estimate.id})" title="Print Quote"><i class="bi bi-printer"></i></button>
-                        <button class="btn btn-outline-success" onclick="contractCreator.createFromEstimate(${estimate.id})" title="Generate Contract"><i class="bi bi-file-earmark-text"></i></button>
+                        <button class="btn btn-outline-primary" onclick="app.viewEstimate('${estimate.id}')" title="View Details"><i class="bi bi-eye"></i></button>
+                        <button class="btn btn-outline-secondary" onclick="app.printEstimate('${estimate.id}')" title="Print Quote"><i class="bi bi-printer"></i></button>
+                        <button class="btn btn-outline-success" onclick="contractCreator.createFromEstimate('${estimate.id}')" title="Generate Contract"><i class="bi bi-file-earmark-text"></i></button>
                     </div>
                 </td>
             </tr>
@@ -3907,19 +3908,134 @@ class ConstructProApp {
         `;
     }
 
+    showTeamView(mode) {
+        this.teamViewMode = mode;
+        this.loadTeam();
+    }
+
     loadTeam() {
-        const users = window.authManager ? window.authManager.users : [];
-        const subcontractors = window.dataManager ? window.dataManager.data.subcontractors : [];
+        const mainContent = document.getElementById('mainContent');
+        if (!mainContent) return;
+
+        const users = (window.authManager && window.authManager.users) ? window.authManager.users : [];
+        const subcontractors = (window.dataManager && window.dataManager.data && window.dataManager.data.subcontractors) ? window.dataManager.data.subcontractors : [];
         const currentUser = this.currentUser;
+        const viewMode = this.teamViewMode || 'grid';
         
         // Mock live updates for Team Feed (ClickUp style)
         const teamUpdates = [
             { user: 'Demo User', action: 'updated the Foundation Pour task', time: '10m ago', icon: 'bi-check-circle-fill', color: 'text-success' },
             { user: 'Mike Apex', action: 'uploaded site inspection photos', time: '1h ago', icon: 'bi-image', color: 'text-primary' },
-            { user: 'Dan Brick', action: 'marked Exterior Masonry as in-progress', time: '3h ago', icon: 'bi-play-fill', color: 'text-warning' }
+            { user: 'Dan Brick', action: 'marked Exterior Masonry as in-progress', time: '3h ago', icon: 'bi-play-fill', color: 'text-warning' },
+            { user: 'System', action: 'New daily log entry for Modern Residential', time: '5h ago', icon: 'bi-journal-check', color: 'text-info' }
         ];
 
-        document.getElementById('mainContent').innerHTML = `
+        let teamDisplayHtml = '';
+        if (viewMode === 'grid') {
+            teamDisplayHtml = `
+                <div class="row g-4">
+                    ${users.map(user => `
+                        <div class="col-md-6">
+                            <div class="card border-0 shadow-sm h-100 hover-shadow transition" style="border-radius: 12px; border-top: 4px solid var(--bs-primary) !important;">
+                                <div class="card-body p-4">
+                                    <div class="d-flex align-items-center gap-3 mb-4">
+                                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 56px; height: 56px; font-weight: 700; font-size: 1.2rem; box-shadow: 0 4px 10px rgba(13, 110, 253, 0.2);">
+                                            ${(user.firstName?.[0] || 'U')}${(user.lastName?.[0] || 'U')}
+                                        </div>
+                                        <div class="flex-grow-1 overflow-hidden">
+                                            <h5 class="fw-bold mb-0 text-truncate">${user.firstName || ''} ${user.lastName || ''}</h5>
+                                            <p class="text-muted small mb-0 text-truncate">${this.getRoleDisplayName(user.role)}</p>
+                                        </div>
+                                        <div class="text-end">
+                                            <span class="badge ${user.isActive ? 'bg-success' : 'bg-secondary'} rounded-pill px-2" style="font-size: 0.65rem;">
+                                                ${user.isActive ? 'ONLINE' : 'OFFLINE'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="d-flex flex-wrap gap-2 mb-4">
+                                        <div class="bg-light rounded px-2 py-1 small border d-flex align-items-center">
+                                            <i class="bi bi-briefcase me-1 text-primary"></i> ${user.type || 'Full-Time'}
+                                        </div>
+                                        <div class="bg-light rounded px-2 py-1 small border d-flex align-items-center">
+                                            <i class="bi bi-calendar-event me-1 text-primary"></i> ${user.hireDate ? new Date(user.hireDate).toLocaleDateString() : 'N/A'}
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-sm btn-outline-primary flex-grow-1 py-2" onclick="app.showUserProfile('${user.id}')">
+                                            <i class="bi bi-person-lines-fill me-1"></i> Profile
+                                        </button>
+                                        ${user.id !== currentUser?.id ? `
+                                            <button class="btn btn-sm btn-primary px-3 py-2" onclick="app.openDirectMessage('${user.id}')" title="Send Direct Message">
+                                                <i class="bi bi-chat-dots-fill"></i>
+                                            </button>
+                                        ` : ''}
+                                        ${window.authManager.hasPermission('admin') ? `
+                                            <button class="btn btn-sm btn-outline-secondary px-3 py-2" onclick="app.showEditUserModal('${user.id}')" title="Edit Permissions & Wages">
+                                                <i class="bi bi-gear-fill"></i>
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                    ${users.length === 0 ? '<div class="col-12 text-center py-5 text-muted">No team members found</div>' : ''}
+                </div>
+            `;
+        } else {
+            teamDisplayHtml = `
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light text-muted small text-uppercase">
+                            <tr>
+                                <th class="ps-4">Team Member</th>
+                                <th>Role / Position</th>
+                                <th>Employment</th>
+                                <th>Status</th>
+                                <th class="text-end pe-4">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${users.map(user => `
+                                <tr>
+                                    <td class="ps-4 py-3">
+                                        <div class="d-flex align-items-center gap-3">
+                                            <div class="bg-primary-subtle text-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 38px; height: 38px; font-size: 0.9rem; font-weight: 700;">
+                                                ${(user.firstName?.[0] || 'U')}${(user.lastName?.[0] || 'U')}
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold text-dark">${user.firstName || ''} ${user.lastName || ''}</div>
+                                                <small class="text-muted">${user.email || user.username}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span class="small fw-medium">${this.getRoleDisplayName(user.role)}</span></td>
+                                    <td><span class="badge bg-light text-dark border-0 px-2 py-1">${user.type || 'Full-Time'}</span></td>
+                                    <td>
+                                        <span class="d-flex align-items-center gap-1 small">
+                                            <i class="bi bi-circle-fill ${user.isActive ? 'text-success' : 'text-secondary'}" style="font-size: 0.5rem;"></i>
+                                            ${user.isActive ? 'Active Now' : 'Offline'}
+                                        </span>
+                                    </td>
+                                    <td class="text-end pe-4">
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-light border" onclick="app.showUserProfile('${user.id}')" title="View Profile"><i class="bi bi-eye"></i></button>
+                                            ${user.id !== currentUser?.id ? `<button class="btn btn-sm btn-light border" onclick="app.openDirectMessage('${user.id}')" title="Message"><i class="bi bi-chat-fill"></i></button>` : ''}
+                                            ${window.authManager.hasPermission('admin') ? `<button class="btn btn-sm btn-light border" onclick="app.showEditUserModal('${user.id}')" title="Edit Settings"><i class="bi bi-gear"></i></button>` : ''}
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                            ${users.length === 0 ? '<tr><td colspan="5" class="text-center py-5">No team members found</td></tr>' : ''}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        mainContent.innerHTML = `
             <div class="row mb-4 align-items-center">
                 <div class="col">
                     <h2 class="mb-1 fw-bold"><i class="bi bi-people-fill text-primary"></i> Team Workspace</h2>
@@ -3930,8 +4046,8 @@ class ConstructProApp {
                         <button class="btn btn-outline-primary" onclick="app.showRecentChats()">
                             <i class="bi bi-chat-dots me-1"></i> Messages
                         </button>
-                        ${window.authManager.hasPermission('admin') ? `
-                        <button class="btn btn-primary shadow-sm" onclick="app.showAddAdminUserModal()">
+                        ${window.authManager && window.authManager.hasPermission('admin') ? `
+                        <button class="btn btn-primary shadow-sm px-4" onclick="app.showAddAdminUserModal()">
                             <i class="bi bi-person-plus-fill me-1"></i> Add Member
                         </button>
                         ` : ''}
@@ -3940,61 +4056,31 @@ class ConstructProApp {
             </div>
 
             <div class="row g-4">
-                <!-- Team Members Grid (Monday/ClickUp Style) -->
+                <!-- Team Members Section -->
                 <div class="col-lg-8">
                     <div class="card border-0 shadow-sm overflow-hidden" style="border-radius: 15px;">
                         <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0 fw-bold">Active Crew</h5>
-                            <div class="btn-group btn-group-sm">
-                                <button class="btn btn-light border active">Grid</button>
-                                <button class="btn btn-light border" onclick="app.showAlert('info', 'List view coming soon')">List</button>
+                            <h5 class="mb-0 fw-bold text-dark">Active Crew <span class="badge bg-primary-subtle text-primary rounded-pill ms-2 small" style="font-size: 0.7rem;">${users.length}</span></h5>
+                            <div class="btn-group btn-group-sm p-1 bg-light rounded-3">
+                                <button class="btn ${viewMode === 'grid' ? 'btn-white shadow-sm fw-bold' : 'btn-link text-muted'}" onclick="app.showTeamView('grid')" style="text-decoration: none;">
+                                    <i class="bi bi-grid-fill me-1"></i> Grid
+                                </button>
+                                <button class="btn ${viewMode === 'list' ? 'btn-white shadow-sm fw-bold' : 'btn-link text-muted'}" onclick="app.showTeamView('list')" style="text-decoration: none;">
+                                    <i class="bi bi-list-task me-1"></i> List
+                                </button>
                             </div>
                         </div>
-                        <div class="card-body p-4">
-                            <div class="row g-4">
-                                ${users.map(user => `
-                                    <div class="col-md-6">
-                                        <div class="card border h-100 hover-shadow transition" style="border-radius: 12px;">
-                                            <div class="card-body p-3">
-                                                <div class="d-flex align-items-start gap-3">
-                                                    <div class="bg-primary-subtle text-primary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 50px; height: 50px; font-weight: 700;">
-                                                        ${(user.firstName?.[0] || '')}${(user.lastName?.[0] || '')}
-                                                    </div>
-                                                    <div class="flex-grow-1 overflow-hidden">
-                                                        <h6 class="fw-bold mb-0 text-truncate">${user.firstName} ${user.lastName}</h6>
-                                                        <p class="text-muted small mb-2 text-truncate">${this.getRoleDisplayName(user.role)}</p>
-                                                        <div class="d-flex flex-wrap gap-1 mb-3">
-                                                            <span class="badge bg-light text-dark border-0 small px-2" style="font-size: 0.7rem;">${user.type || 'Full-Time'}</span>
-                                                            <span class="badge ${user.isActive ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} border-0 small px-2" style="font-size: 0.7rem;">
-                                                                ${user.isActive ? 'Online' : 'Offline'}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="d-flex gap-2">
-                                                    <button class="btn btn-sm btn-outline-primary flex-grow-1" onclick="app.showUserProfile('${user.id}')">
-                                                        View Profile
-                                                    </button>
-                                                    ${user.id !== currentUser?.id ? `
-                                                        <button class="btn btn-sm btn-primary px-3" onclick="app.openDirectMessage('${user.id}')">
-                                                            <i class="bi bi-chat-fill"></i>
-                                                        </button>
-                                                    ` : ''}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>
+                        <div class="card-body p-4 bg-light bg-opacity-10">
+                            ${teamDisplayHtml}
                         </div>
                     </div>
 
                     <!-- Subcontractors Section -->
                     <div class="card border-0 shadow-sm mt-4" style="border-radius: 15px;">
                         <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0 fw-bold">External Partners</h5>
-                            <button class="btn btn-sm btn-outline-primary" onclick="app.showAddSubcontractorModal()">
-                                <i class="bi bi-plus-lg"></i> Add Sub
+                            <h5 class="mb-0 fw-bold text-dark">External Partners</h5>
+                            <button class="btn btn-sm btn-outline-primary rounded-pill px-3" onclick="app.showAddSubcontractorModal()">
+                                <i class="bi bi-plus-lg me-1"></i> Add Sub
                             </button>
                         </div>
                         <div class="card-body p-0">
@@ -4002,24 +4088,27 @@ class ConstructProApp {
                                 <table class="table table-hover align-middle mb-0">
                                     <thead class="bg-light text-muted small text-uppercase">
                                         <tr>
-                                            <th class="ps-4">Company</th>
-                                            <th>Trade</th>
-                                            <th>Status</th>
-                                            <th class="text-end pe-4">Contact</th>
+                                            <th class="ps-4 py-3">Company</th>
+                                            <th class="py-3">Trade</th>
+                                            <th class="py-3">Status</th>
+                                            <th class="text-end pe-4 py-3">Contact</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        ${subcontractors.length === 0 ? '<tr><td colspan="4" class="text-center py-4">No partners listed</td></tr>' : subcontractors.map(sub => `
+                                        ${subcontractors.length === 0 ? '<tr><td colspan="4" class="text-center py-5 text-muted">No partners listed in current network</td></tr>' : subcontractors.map(sub => `
                                             <tr>
-                                                <td class="ps-4">
-                                                    <div class="fw-bold">${sub.company}</div>
+                                                <td class="ps-4 py-3">
+                                                    <div class="fw-bold text-dark">${sub.company}</div>
                                                     <small class="text-muted">${sub.contact}</small>
                                                 </td>
-                                                <td><span class="badge bg-light text-dark border-0">${sub.trade}</span></td>
-                                                <td><span class="badge bg-success-subtle text-success border-0">Verified</span></td>
+                                                <td><span class="badge bg-light text-dark border px-2 py-1 small fw-normal">${sub.trade}</span></td>
+                                                <td><span class="badge bg-success-subtle text-success border-0 px-2 py-1 small">Verified</span></td>
                                                 <td class="text-end pe-4">
-                                                    <button class="btn btn-sm btn-link text-primary"><i class="bi bi-chat-text"></i></button>
-                                                    <button class="btn btn-sm btn-link text-danger" onclick="app.deleteSubcontractor(${sub.id})"><i class="bi bi-trash"></i></button>
+                                                    <div class="btn-group">
+                                                        <button class="btn btn-sm btn-link text-primary"><i class="bi bi-chat-text-fill"></i></button>
+                                                        <button class="btn btn-sm btn-link text-primary"><i class="bi bi-telephone-fill"></i></button>
+                                                        <button class="btn btn-sm btn-link text-danger" onclick="app.deleteSubcontractor('${sub.id}')"><i class="bi bi-trash"></i></button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         `).join('')}
@@ -4033,28 +4122,32 @@ class ConstructProApp {
                 <!-- Live Feed Sidebar (ClickUp Style) -->
                 <div class="col-lg-4">
                     <div class="card border-0 shadow-sm h-100" style="border-radius: 15px;">
-                        <div class="card-header bg-white py-3 border-bottom">
-                            <h5 class="mb-0 fw-bold">Live Activity Feed</h5>
+                        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0 fw-bold text-dark">Live Activity Feed</h5>
+                            <span class="spinner-grow spinner-grow-sm text-success" role="status"></span>
                         </div>
                         <div class="card-body p-0">
                             <div class="list-group list-group-flush">
                                 ${teamUpdates.map(update => `
-                                    <div class="list-group-item border-0 py-3 px-4">
+                                    <div class="list-group-item border-0 py-3 px-4 activity-item">
                                         <div class="d-flex gap-3">
-                                            <div class="${update.color} fs-5 mt-1">
+                                            <div class="activity-icon ${update.color} bg-opacity-10 rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px; background-color: rgba(0,0,0,0.05);">
                                                 <i class="bi ${update.icon}"></i>
                                             </div>
-                                            <div>
-                                                <p class="mb-0 small"><span class="fw-bold">${update.user}</span> ${update.action}</p>
-                                                <small class="text-muted">${update.time}</small>
+                                            <div class="flex-grow-1">
+                                                <p class="mb-0 small text-dark"><span class="fw-bold">${update.user}</span> ${update.action}</p>
+                                                <div class="d-flex justify-content-between align-items-center mt-1">
+                                                    <small class="text-muted" style="font-size: 0.7rem;">${update.time}</small>
+                                                    <a href="#" class="small text-decoration-none" style="font-size: 0.7rem;">View</a>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 `).join('')}
                             </div>
                         </div>
-                        <div class="card-footer bg-light border-0 text-center py-3">
-                            <button class="btn btn-link btn-sm text-decoration-none" onclick="app.showAlert('info', 'Full history coming soon')">View all activity</button>
+                        <div class="card-footer bg-light bg-opacity-50 border-0 text-center py-3">
+                            <button class="btn btn-link btn-sm text-decoration-none fw-bold" onclick="app.showAlert('info', 'Full history logging is currently active for this session.')">View all activity history</button>
                         </div>
                     </div>
                 </div>
@@ -4142,6 +4235,85 @@ class ConstructProApp {
                 window.dataManager.saveData('subcontractors');
                 this.loadTeam();
             }
+        }
+    }
+
+    addActivityFeedItem(user, action, type = 'info') {
+        const icons = {
+            'info': 'bi-info-circle',
+            'success': 'bi-check-circle-fill',
+            'warning': 'bi-exclamation-triangle-fill',
+            'danger': 'bi-x-circle-fill',
+            'finance': 'bi-currency-dollar',
+            'project': 'bi-kanban',
+            'team': 'bi-people-fill'
+        };
+        
+        const colors = {
+            'info': 'text-info',
+            'success': 'text-success',
+            'warning': 'text-warning',
+            'danger': 'text-danger',
+            'finance': 'text-success',
+            'project': 'text-primary',
+            'team': 'text-primary'
+        };
+
+        const newItem = {
+            user: user,
+            action: action,
+            time: 'Just now',
+            icon: icons[type] || 'bi-info-circle',
+            color: colors[type] || 'text-info',
+            timestamp: new Date().toISOString()
+        };
+
+        // For now, we'll just log it to console or store in a temporary session list
+        console.log('Activity Feed Update:', newItem);
+        
+        // Refresh Team module if active to show new mock activity
+        if (this.currentModule === 'team') {
+            this.loadTeam();
+        }
+    updateProfile() {
+        const form = document.getElementById('profileSettingsForm');
+        if (!form) return;
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        if (window.authManager && this.currentUser) {
+            window.authManager.updateUser(this.currentUser.id, data);
+            this.showAlert('success', 'Profile updated successfully');
+        }
+    }
+
+    updateCompanySettings() {
+        const form = document.getElementById('companySettingsForm');
+        if (!form) return;
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        if (window.authManager && this.currentUser) {
+            window.authManager.updateUser(this.currentUser.id, { company: data.company });
+            this.showAlert('success', 'Company settings updated');
+        }
+    }
+
+    toggleDarkMode(enabled) {
+        if (enabled) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('constructpro_dark_mode', 'true');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('constructpro_dark_mode', 'false');
+        }
+    }
+
+    showAlert(type, message) {
+        if (window.authManager) {
+            window.authManager.showAlert(type, message);
+        } else {
+            alert(message);
         }
     }
 }

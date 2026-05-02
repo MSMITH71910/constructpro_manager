@@ -227,7 +227,7 @@ class ContractCreator {
         const html = this.contractTemplates.map(template => `
             <div class="contract-template-item border rounded p-3 mb-3 hover-shadow" 
                  style="cursor: pointer;" 
-                 onclick="contractCreator.selectTemplate(${template.id})">
+                 onclick="contractCreator.selectTemplate('${template.id}')">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <h6 class="mb-0">${template.name}</h6>
                     <span class="badge bg-primary">${template.type}</span>
@@ -393,7 +393,7 @@ class ContractCreator {
                 <td><span class="badge bg-primary">${estimate.status}</span></td>
                 <td>${new Date().toLocaleDateString()}</td>
                 <td>
-                    <button class="btn btn-sm btn-primary" onclick="contractCreator.createContractFromEstimate(${estimate.id})">
+                    <button class="btn btn-sm btn-primary" onclick="contractCreator.createContractFromEstimate('${estimate.id}')">
                         <i class="bi bi-file-earmark-text"></i> Create Contract
                     </button>
                 </td>
@@ -676,15 +676,27 @@ class ContractCreator {
     }
 
     generatePDF() {
-        this.showAlert('info', 'PDF generation feature coming soon! Contract preview is ready for printing.');
+        const content = document.getElementById('contractPreview').innerHTML;
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write('<html><head><title>Contract Preview</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head><body>');
+        printWindow.document.write(content);
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        printWindow.print();
     }
 
     emailContract() {
-        this.showAlert('info', 'Email feature coming soon! You can copy the contract text for now.');
+        const clientEmail = document.getElementById('contractClientEmail')?.value || 'client@example.com';
+        const projectName = document.getElementById('contractProjectName')?.value || 'Project';
+        window.location.href = `mailto:${clientEmail}?subject=Contract for ${projectName}&body=Please find the contract attached or view it in the portal.`;
+        this.showAlert('info', 'Opening email client...');
     }
 
     editContract() {
-        this.showAlert('info', 'Contract editor coming soon! Use the preview for now.');
+        this.showAlert('info', 'Manual editing enabled in preview mode. Click on text to modify.');
+        const preview = document.getElementById('contractPreview');
+        preview.setAttribute('contenteditable', 'true');
+        preview.classList.add('border', 'border-primary');
     }
 
     showAlert(type, message) {

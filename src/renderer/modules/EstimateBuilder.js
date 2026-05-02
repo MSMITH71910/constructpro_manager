@@ -475,7 +475,7 @@ class EstimateBuilder {
                         <span class="badge bg-${item.item_type === 'material' ? 'primary' : 'success'}">${item.item_type}</span>
                     </div>
                     <div class="col-md-1 text-center">
-                        <button class="btn btn-sm btn-outline-danger" onclick="estimateBuilder.removeItem(${index})">
+                        <button class="btn btn-sm btn-outline-danger" onclick="estimateBuilder.removeItem('${index}')">
                             <i class="bi bi-trash"></i>
                         </button>
                     </div>
