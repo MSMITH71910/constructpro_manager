@@ -51,6 +51,16 @@ class ConstructProApp {
         
         this.isAppInitialized = true;
         console.log('Initializing app for user:', this.currentUser?.username);
+
+        // Populate demo team data for profile views if not exists
+        if (window.dataManager && (!window.dataManager.data.team || window.dataManager.data.team.length === 0)) {
+            window.dataManager.data.team = [
+                { id: 'demo-1', firstName: 'John', lastName: 'Doe', email: 'john@demo.com', role: 'project_manager', company: 'Demo Construction', type: 'Full-Time' },
+                { id: 'demo-2', firstName: 'Sarah', lastName: 'Miller', email: 'sarah@demo.com', role: 'site_supervisor', company: 'Demo Construction', type: 'Full-Time' },
+                { id: 'demo-3', firstName: 'Bill', lastName: 'Watts', email: 'bill@demo.com', role: 'foreman', company: 'Elite Electrical', type: 'Contractor' }
+            ];
+            window.dataManager.saveData('team');
+        }
         
         // ALWAYS hide loading screen first, even if there are errors
         this.hideLoadingScreen();
@@ -209,16 +219,244 @@ class ConstructProApp {
         }
     }
 
-    showUserProfile() {
-        this.showAlert('info', 'User profile view is now active for this session!');
+    showUserProfile(userId) {
+        let user = this.currentUser;
+        
+        // If a userId is passed, find that user in the team list
+        if (userId && window.dataManager && window.dataManager.data.team) {
+            user = window.dataManager.data.team.find(u => u.id == userId) || user;
+        }
+
+        if (!document.getElementById('userProfileModal')) {
+            const modalHtml = `
+                <div class="modal fade" id="userProfileModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content border-0 shadow-lg">
+                            <div class="modal-header border-0 pb-0">
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body p-4 text-center">
+                                <div class="mb-4">
+                                    <div class="bg-primary text-white rounded-circle d-inline-flex p-3 shadow-sm" style="width: 100px; height: 100px; align-items: center; justify-content: center;">
+                                        <h2 class="mb-0 fw-bold" id="profileInitials"></h2>
+                                    </div>
+                                </div>
+                                <h4 class="fw-bold mb-1" id="profileName"></h4>
+                                <p class="text-muted" id="profileRole"></p>
+                                <div class="badge bg-light text-dark border mb-4 px-3 py-2" id="profileType"></div>
+                                
+                                <div class="row g-3 text-start mb-4">
+                                    <div class="col-12 border-bottom pb-2">
+                                        <label class="text-muted small text-uppercase fw-bold">Email Address</label>
+                                        <div class="fw-bold" id="profileEmail"></div>
+                                    </div>
+                                    <div class="col-12 border-bottom pb-2">
+                                        <label class="text-muted small text-uppercase fw-bold">Company / Branch</label>
+                                        <div class="fw-bold" id="profileCompany"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-outline-primary" onclick="app.showAlert('info', 'Messaging system coming soon')">
+                                        <i class="bi bi-chat-text me-2"></i> Send Message
+                                    </button>
+                                    <button class="btn btn-outline-secondary" onclick="app.showAlert('info', 'Document sharing coming soon')">
+                                        <i class="bi bi-share me-2"></i> Share Documents
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+
+        // Populate modal
+        document.getElementById('profileInitials').textContent = (user.firstName?.[0] || '') + (user.lastName?.[0] || user.username?.[0] || 'U');
+        document.getElementById('profileName').textContent = `${user.firstName || ''} ${user.lastName || user.username}`;
+        document.getElementById('profileRole').textContent = this.getRoleDisplayName(user.role);
+        document.getElementById('profileType').textContent = user.type || 'Full-Time';
+        document.getElementById('profileEmail').textContent = user.email || 'N/A';
+        document.getElementById('profileCompany').textContent = user.company || 'ConstructPro Professional';
+
+        new bootstrap.Modal(document.getElementById('userProfileModal')).show();
     }
 
     showAddClientModal() {
-        this.showAlert('info', 'Client registration form is now active!');
+        if (!document.getElementById('addClientModal')) {
+            const modalHtml = `
+                <div class="modal fade" id="addClientModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content border-0 shadow-lg">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i> Register New Client</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body p-4">
+                                <form id="addClientForm">
+                                    <div class="row g-3">
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Client Name / Business Name</label>
+                                            <input type="text" class="form-control" id="clientName" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Contact Person</label>
+                                            <input type="text" class="form-control" id="clientContact" placeholder="Full name of primary contact">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold small">Email Address</label>
+                                            <input type="email" class="form-control" id="clientEmail" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold small">Phone Number</label>
+                                            <input type="tel" class="form-control" id="clientPhone" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Billing Address</label>
+                                            <textarea class="form-control" id="clientAddress" rows="2"></textarea>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Client Type</label>
+                                            <select class="form-select" id="clientType">
+                                                <option value="residential">Residential</option>
+                                                <option value="commercial">Commercial</option>
+                                                <option value="industrial">Industrial</option>
+                                                <option value="government">Government</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer bg-light">
+                                <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary px-4" onclick="app.saveClient()">Register Client</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+        new bootstrap.Modal(document.getElementById('addClientModal')).show();
+    }
+
+    saveClient() {
+        const formData = {
+            id: Date.now(),
+            name: document.getElementById('clientName').value,
+            contact_person: document.getElementById('clientContact').value,
+            email: document.getElementById('clientEmail').value,
+            phone: document.getElementById('clientPhone').value,
+            address: document.getElementById('clientAddress').value,
+            type: document.getElementById('clientType').value,
+            created_at: new Date().toISOString()
+        };
+
+        if (!formData.name || !formData.email) {
+            this.showAlert('danger', 'Please provide at least a name and email');
+            return;
+        }
+
+        if (window.dataManager) {
+            window.dataManager.data.clients.push(formData);
+            window.dataManager.saveData('clients');
+            
+            this.showAlert('success', `Client "${formData.name}" registered successfully`);
+            bootstrap.Modal.getInstance(document.getElementById('addClientModal')).hide();
+            this.loadClients(); // Refresh the list
+        }
     }
 
     showAddTeamMemberModal() {
-        this.showAlert('info', 'Team member invitation system is now active!');
+        if (!document.getElementById('addTeamMemberModal')) {
+            const modalHtml = `
+                <div class="modal fade" id="addTeamMemberModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content border-0 shadow-lg">
+                            <div class="modal-header bg-success text-white">
+                                <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i> Add Team Member</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body p-4">
+                                <form id="addTeamMemberForm">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold small">First Name</label>
+                                            <input type="text" class="form-control" id="teamMemberFirstName" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold small">Last Name</label>
+                                            <input type="text" class="form-control" id="teamMemberLastName" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Email Address</label>
+                                            <input type="email" class="form-control" id="teamMemberEmail" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Role / Position</label>
+                                            <input type="text" class="form-control" id="teamMemberRole" placeholder="e.g., Foreman, Site Supervisor" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Employment Type</label>
+                                            <select class="form-select" id="teamMemberType">
+                                                <option value="full-time">Full-Time Employee</option>
+                                                <option value="part-time">Part-Time Employee</option>
+                                                <option value="contractor">Subcontractor</option>
+                                                <option value="temporary">Temporary / Seasonal</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-12">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="sendInvite" checked>
+                                                <label class="form-check-label small" for="sendInvite">
+                                                    Send automated invitation email with login credentials
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer bg-light">
+                                <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-success px-4" onclick="app.saveTeamMember()">Add to Team</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+        new bootstrap.Modal(document.getElementById('addTeamMemberModal')).show();
+    }
+
+    saveTeamMember() {
+        const formData = {
+            id: Date.now(),
+            firstName: document.getElementById('teamMemberFirstName').value,
+            lastName: document.getElementById('teamMemberLastName').value,
+            email: document.getElementById('teamMemberEmail').value,
+            role: document.getElementById('teamMemberRole').value,
+            type: document.getElementById('teamMemberType').value,
+            initials: (document.getElementById('teamMemberFirstName').value[0] || '') + (document.getElementById('teamMemberLastName').value[0] || ''),
+            added_at: new Date().toISOString()
+        };
+
+        if (!formData.firstName || !formData.email) {
+            this.showAlert('danger', 'Please provide at least a name and email');
+            return;
+        }
+
+        if (window.dataManager) {
+            // Check if team array exists in data, if not create it or use existing logic
+            if (!window.dataManager.data.team) window.dataManager.data.team = [];
+            window.dataManager.data.team.push(formData);
+            window.dataManager.saveData('team');
+            
+            this.showAlert('success', `${formData.firstName} ${formData.lastName} has been added to your team!`);
+            bootstrap.Modal.getInstance(document.getElementById('addTeamMemberModal')).hide();
+            this.loadTeam(); // Refresh the list
+        }
     }
 
     showAddProjectModal() {
@@ -230,7 +468,96 @@ class ConstructProApp {
     }
 
     showAddAdminUserModal() {
-        this.showAlert('info', 'Admin user creation is now active for your company!');
+        if (!document.getElementById('addAdminUserModal')) {
+            const modalHtml = `
+                <div class="modal fade" id="addAdminUserModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content border-0 shadow-lg">
+                            <div class="modal-header bg-danger text-white">
+                                <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i> Add System User</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body p-4">
+                                <form id="addAdminUserForm">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold small">First Name</label>
+                                            <input type="text" class="form-control" id="adminUserFirstName" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold small">Last Name</label>
+                                            <input type="text" class="form-control" id="adminUserLastName" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Email Address</label>
+                                            <input type="email" class="form-control" id="adminUserEmail" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Username</label>
+                                            <input type="text" class="form-control" id="adminUserUsername" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Role</label>
+                                            <select class="form-select" id="adminUserRole" required>
+                                                <option value="contractor">General Contractor (Admin)</option>
+                                                <option value="project_manager">Project Manager</option>
+                                                <option value="estimator">Estimator</option>
+                                                <option value="subcontractor">Subcontractor</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold small">Temporary Password</label>
+                                            <input type="password" class="form-control" id="adminUserPassword" required>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer bg-light">
+                                <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-danger px-4" onclick="app.saveAdminUser()">Create User Account</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+        new bootstrap.Modal(document.getElementById('addAdminUserModal')).show();
+    }
+
+    saveAdminUser() {
+        const formData = {
+            firstName: document.getElementById('adminUserFirstName').value,
+            lastName: document.getElementById('adminUserLastName').value,
+            email: document.getElementById('adminUserEmail').value,
+            username: document.getElementById('adminUserUsername').value,
+            role: document.getElementById('adminUserRole').value,
+            password: document.getElementById('adminUserPassword').value
+        };
+
+        if (!formData.username || !formData.password) {
+            this.showAlert('danger', 'Please fill in all required fields');
+            return;
+        }
+
+        // Add to AuthManager users
+        if (window.authManager) {
+            const newUser = {
+                id: Date.now().toString(),
+                ...formData,
+                password: window.authManager.hashPassword(formData.password),
+                company: this.currentUser.company,
+                createdAt: new Date().toISOString(),
+                isActive: true
+            };
+            
+            window.authManager.users.push(newUser);
+            window.authManager.saveUsers();
+            
+            this.showAlert('success', `User account created for ${formData.firstName} ${formData.lastName}`);
+            bootstrap.Modal.getInstance(document.getElementById('addAdminUserModal')).hide();
+            this.loadAdmin(); // Refresh the list
+        }
     }
 
     addMilestone() {
@@ -1813,7 +2140,7 @@ class ConstructProApp {
                             </div>
                             <hr>
                             <div class="d-grid">
-                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile()">View Profile</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile('demo-1')">View Profile</button>
                             </div>
                         </div>
                     </div>
@@ -1835,7 +2162,7 @@ class ConstructProApp {
                             </div>
                             <hr>
                             <div class="d-grid">
-                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile()">View Profile</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile('demo-2')">View Profile</button>
                             </div>
                         </div>
                     </div>
@@ -1857,7 +2184,7 @@ class ConstructProApp {
                             </div>
                             <hr>
                             <div class="d-grid">
-                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile()">View Profile</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="app.showUserProfile('demo-3')">View Profile</button>
                             </div>
                         </div>
                     </div>
