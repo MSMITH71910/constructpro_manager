@@ -98,9 +98,12 @@ class AuthManager {
                                                     Remember me for 30 days
                                                 </label>
                                             </div>
-                                            <div class="d-grid">
-                                                <button type="submit" class="btn btn-primary btn-lg">
-                                                    <i class="bi bi-box-arrow-in-right"></i> Sign In
+                                            <div class="d-grid gap-2">
+                                                <button type="submit" class="btn btn-primary btn-lg shadow-sm">
+                                                    <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+                                                </button>
+                                                <button type="button" class="btn btn-outline-warning btn-lg shadow-sm" onclick="window.authManager.demoLogin()">
+                                                    <i class="bi bi-play-circle me-2"></i>Try Demo Account
                                                 </button>
                                             </div>
                                             <div class="text-center mt-3">
@@ -604,6 +607,30 @@ class AuthManager {
 
         const userPermissions = permissions[this.currentUser.role] || [];
         return userPermissions.includes(permission);
+    }
+
+    demoLogin() {
+        // Find or create demo user
+        let demoUser = this.users.find(u => u.username === 'demo');
+        if (!demoUser) {
+            demoUser = {
+                id: 'demo-user-id',
+                firstName: 'Demo',
+                lastName: 'User',
+                username: 'demo',
+                email: 'demo@constructpro.ai',
+                company: 'Demo Construction Co.',
+                role: 'admin',
+                type: 'Full-Time',
+                industry: 'General Contractor'
+            };
+            this.users.push(demoUser);
+            localStorage.setItem('constructpro_users', JSON.stringify(this.users));
+        }
+        
+        this.currentUser = demoUser;
+        this.isAuthenticated = true;
+        this.completeLogin(false);
     }
 }
 

@@ -80,6 +80,19 @@ class DataManager {
     }
 
     populateDemoDataIfEmpty() {
+        if (this.data.industries.length === 0) {
+            this.data.industries = [
+                { id: 1, name: 'General Contractor', description: 'Residential and commercial construction' },
+                { id: 2, name: 'Electrical', description: 'Electrical installations and repair' },
+                { id: 3, name: 'Plumbing', description: 'Plumbing and HVAC services' },
+                { id: 4, name: 'Roofing', description: 'Roofing and exterior work' },
+                { id: 5, name: 'Landscaping', description: 'Site prep and landscaping' },
+                { id: 6, name: 'Demolition', description: 'Structure removal and site clearing' },
+                { id: 7, name: 'Chimney Sweep', description: 'Chimney cleaning, inspection and repair' }
+            ];
+            localStorage.setItem(this.getUserDataKey('industries'), JSON.stringify(this.data.industries));
+        }
+
         if (this.data.projects.length === 0) {
             console.log('Populating professional demo data...');
             const demoProject = {

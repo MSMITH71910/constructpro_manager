@@ -2,6 +2,7 @@
 class ConstructProApp {
     constructor() {
         this.currentModule = 'dashboard';
+        this.currentScheduleView = 'list'; // list, gantt, board
         this.selectedIndustry = null;
         this.currentProject = null;
         this.currentEstimate = {
@@ -52,6 +53,17 @@ class ConstructProApp {
         this.isAppInitialized = true;
         console.log('Initializing app for user:', this.currentUser?.username);
 
+        // Update Nav Info
+        if (this.currentUser) {
+            const navUserName = document.getElementById('navUserName');
+            if (navUserName) navUserName.textContent = `${this.currentUser.firstName || this.currentUser.username}`;
+            
+            const navAdminLink = document.getElementById('navAdminLink');
+            if (navAdminLink) {
+                navAdminLink.style.display = (this.currentUser.role === 'admin' || this.currentUser.role === 'owner') ? 'block' : 'none';
+            }
+        }
+
         // Populate demo team data for profile views if not exists
         if (window.dataManager && (!window.dataManager.data.team || window.dataManager.data.team.length === 0)) {
             window.dataManager.data.team = [
@@ -72,9 +84,16 @@ class ConstructProApp {
             // Initialize DataManager first and wait for it to load data
             window.dataManager = new DataManager();
             
-            // Wait for DataManager to be fully initialized
-            while (!window.dataManager || !window.dataManager.data) {
+            // Wait for DataManager to be fully initialized with a timeout
+            let retryCount = 0;
+            const maxRetries = 50; // 5 seconds
+            while ((!window.dataManager || !window.dataManager.data || window.dataManager.data.industries.length === 0) && retryCount < maxRetries) {
                 await new Promise(resolve => setTimeout(resolve, 100));
+                retryCount++;
+            }
+            
+            if (retryCount >= maxRetries) {
+                console.warn('DataManager took too long to initialize, proceeding with fallback data');
             }
             
             // Initialize modules
@@ -217,70 +236,6 @@ class ConstructProApp {
         if (window.authManager) {
             window.authManager.logout();
         }
-    }
-
-    showUserProfile(userId) {
-        let user = this.currentUser;
-        
-        // If a userId is passed, find that user in the team list
-        if (userId && window.dataManager && window.dataManager.data.team) {
-            user = window.dataManager.data.team.find(u => u.id == userId) || user;
-        }
-
-        if (!document.getElementById('userProfileModal')) {
-            const modalHtml = `
-                <div class="modal fade" id="userProfileModal" tabindex="-1">
-                    <div class="modal-dialog">
-                        <div class="modal-content border-0 shadow-lg">
-                            <div class="modal-header border-0 pb-0">
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body p-4 text-center">
-                                <div class="mb-4">
-                                    <div class="bg-primary text-white rounded-circle d-inline-flex p-3 shadow-sm" style="width: 100px; height: 100px; align-items: center; justify-content: center;">
-                                        <h2 class="mb-0 fw-bold" id="profileInitials"></h2>
-                                    </div>
-                                </div>
-                                <h4 class="fw-bold mb-1" id="profileName"></h4>
-                                <p class="text-muted" id="profileRole"></p>
-                                <div class="badge bg-light text-dark border mb-4 px-3 py-2" id="profileType"></div>
-                                
-                                <div class="row g-3 text-start mb-4">
-                                    <div class="col-12 border-bottom pb-2">
-                                        <label class="text-muted small text-uppercase fw-bold">Email Address</label>
-                                        <div class="fw-bold" id="profileEmail"></div>
-                                    </div>
-                                    <div class="col-12 border-bottom pb-2">
-                                        <label class="text-muted small text-uppercase fw-bold">Company / Branch</label>
-                                        <div class="fw-bold" id="profileCompany"></div>
-                                    </div>
-                                </div>
-                                
-                                <div class="d-grid gap-2">
-                                    <button class="btn btn-outline-primary" onclick="app.showAlert('info', 'Messaging system coming soon')">
-                                        <i class="bi bi-chat-text me-2"></i> Send Message
-                                    </button>
-                                    <button class="btn btn-outline-secondary" onclick="app.showAlert('info', 'Document sharing coming soon')">
-                                        <i class="bi bi-share me-2"></i> Share Documents
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-        }
-
-        // Populate modal
-        document.getElementById('profileInitials').textContent = (user.firstName?.[0] || '') + (user.lastName?.[0] || user.username?.[0] || 'U');
-        document.getElementById('profileName').textContent = `${user.firstName || ''} ${user.lastName || user.username}`;
-        document.getElementById('profileRole').textContent = this.getRoleDisplayName(user.role);
-        document.getElementById('profileType').textContent = user.type || 'Full-Time';
-        document.getElementById('profileEmail').textContent = user.email || 'N/A';
-        document.getElementById('profileCompany').textContent = user.company || 'ConstructPro Professional';
-
-        new bootstrap.Modal(document.getElementById('userProfileModal')).show();
     }
 
     showAddClientModal() {
@@ -459,12 +414,182 @@ class ConstructProApp {
         }
     }
 
-    showAddProjectModal() {
-        this.showAlert('info', 'New project wizard is now active!');
+    generateDailyLogPDF() {
+        const printWindow = window.open('', '_blank');
+        const date = new Date().toLocaleDateString();
+        const projectName = this.currentProject ? this.currentProject.name : 'All Projects';
+        
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>Daily Log Report - ${date}</title>
+                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+                <style>
+                    body { padding: 40px; }
+                    .report-header { border-bottom: 2px solid #333; margin-bottom: 30px; padding-bottom: 20px; }
+                    @media print { .no-print { display: none; } }
+                </style>
+            </head>
+            <body>
+                <div class="report-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <h1 class="display-5 fw-bold text-primary">Daily Site Report</h1>
+                        <h4 class="text-muted">${projectName}</h4>
+                    </div>
+                    <div class="text-end">
+                        <p class="mb-0 fw-bold">Date: ${date}</p>
+                        <p class="mb-0 text-muted">Generated by ConstructPro Manager</p>
+                    </div>
+                </div>
+                
+                <div class="row g-4 mb-4">
+                    <div class="col-6">
+                        <div class="card p-3 h-100">
+                            <h5 class="border-bottom pb-2">Weather & Site Conditions</h5>
+                            <p><strong>Temperature:</strong> 68°F / 74°F</p>
+                            <p><strong>Conditions:</strong> Partly Cloudy</p>
+                            <p><strong>Wind:</strong> 8mph NW</p>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="card p-3 h-100">
+                            <h5 class="border-bottom pb-2">Headcount</h5>
+                            <p><strong>Internal Crew:</strong> 8</p>
+                            <p><strong>Subcontractors:</strong> 6</p>
+                            <p class="fw-bold">Total on Site: 14</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card p-3 mb-4">
+                    <h5 class="border-bottom pb-2">Work Observations</h5>
+                    <div class="mb-3">
+                        <h6>Accomplishments:</h6>
+                        <p>Finished pouring the east section of the foundation. Formwork for the center column is 90% complete.</p>
+                    </div>
+                    <div>
+                        <h6>Delays / Issues:</h6>
+                        <p>Material delivery for rebar was delayed by 2 hours due to traffic. No critical impact to schedule.</p>
+                    </div>
+                </div>
+
+                <div class="no-print text-center mt-4">
+                    <button class="btn btn-primary px-4" onclick="window.print()">Print Report</button>
+                    <button class="btn btn-outline-secondary px-4 ms-2" onclick="window.close()">Close Window</button>
+                </div>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
     }
 
-    generateDailyLogPDF() {
-        this.showAlert('success', 'PDF Report "Daily_Log_${new Date().toISOString().split("T")[0]}.pdf" has been generated and is ready for download!');
+    showEditLogModal() {
+        if (!document.getElementById('editLogModal')) {
+            const modalHtml = `
+                <div class="modal fade" id="editLogModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content border-0 shadow-lg">
+                            <div class="modal-header bg-success text-white">
+                                <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i> Edit Daily Log Entry</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body p-4">
+                                <form id="editLogForm">
+                                    <div class="row g-3">
+                                        <div class="col-md-12">
+                                            <label class="form-label fw-bold small">Accomplishments</label>
+                                            <textarea class="form-control" id="logAccomplishments" rows="4">Finished pouring the east section of the foundation. Formwork for the center column is 90% complete.</textarea>
+                                        </div>
+                                        <div class="col-md-12">
+                                            <label class="form-label fw-bold small">Delays / Issues</label>
+                                            <textarea class="form-control" id="logIssues" rows="3">Material delivery for rebar was delayed by 2 hours due to traffic. No critical impact to schedule.</textarea>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold small">Internal Crew</label>
+                                            <input type="number" class="form-control" id="logHeadcount" value="8">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold small">Subcontractors</label>
+                                            <input type="number" class="form-control" id="logSubs" value="6">
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer bg-light">
+                                <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-success px-4" onclick="app.saveDailyLog()">Save Changes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+        new bootstrap.Modal(document.getElementById('editLogModal')).show();
+    }
+
+    saveDailyLog() {
+        this.showAlert('success', 'Daily log entry has been updated successfully!');
+        bootstrap.Modal.getInstance(document.getElementById('editLogModal')).hide();
+        // In a real app, we would update the data in DataManager and refresh the view
+    }
+
+    showUserProfile(userId) {
+        let user = null;
+        if (userId === 'current') {
+            user = this.currentUser;
+        } else if (window.dataManager && window.dataManager.data.team) {
+            user = window.dataManager.data.team.find(t => t.id === userId);
+        }
+
+        if (!user) {
+            user = { firstName: 'John', lastName: 'Doe', email: 'john@demo.com', role: 'project_manager', company: 'Demo Construction' };
+        }
+
+        const initials = (user.firstName?.[0] || '') + (user.lastName?.[0] || '');
+
+        if (!document.getElementById('userProfileModal')) {
+            const modalHtml = `
+                <div class="modal fade" id="userProfileModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content border-0 shadow-lg">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title fw-bold"><i class="bi bi-person-circle me-2"></i> User Profile</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body p-4 text-center">
+                                <div class="mb-4">
+                                    <div class="bg-primary-subtle text-primary rounded-circle d-inline-flex p-3" style="width: 100px; height: 100px; align-items: center; justify-content: center;">
+                                        <h2 class="mb-0 fw-bold" id="profileInitials">${initials}</h2>
+                                    </div>
+                                </div>
+                                <h4 class="fw-bold mb-1" id="profileFullName">${user.firstName} ${user.lastName}</h4>
+                                <p class="text-muted" id="profileRoleDisplay">${this.getRoleDisplayName(user.role)}</p>
+                                <hr>
+                                <div class="text-start">
+                                    <p class="mb-2"><strong>Email:</strong> <span id="profileEmail">${user.email}</span></p>
+                                    <p class="mb-2"><strong>Company:</strong> <span id="profileCompany">${user.company || 'N/A'}</span></p>
+                                    <p class="mb-2"><strong>Role:</strong> <span id="profileRoleDetail">${user.role}</span></p>
+                                </div>
+                            </div>
+                            <div class="modal-footer bg-light">
+                                <button type="button" class="btn btn-outline-primary w-100" onclick="app.showAlert('info', 'Profile editing coming soon')"><i class="bi bi-pencil me-2"></i> Edit Profile</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        } else {
+            // Update existing modal
+            document.getElementById('profileInitials').textContent = initials;
+            document.getElementById('profileFullName').textContent = `${user.firstName} ${user.lastName}`;
+            document.getElementById('profileRoleDisplay').textContent = this.getRoleDisplayName(user.role);
+            document.getElementById('profileEmail').textContent = user.email;
+            document.getElementById('profileCompany').textContent = user.company || 'N/A';
+            document.getElementById('profileRoleDetail').textContent = user.role;
+        }
+        new bootstrap.Modal(document.getElementById('userProfileModal')).show();
     }
 
     showAddAdminUserModal() {
@@ -565,7 +690,144 @@ class ConstructProApp {
     }
 
     showScheduleView(viewType) {
-        this.showAlert('info', `${viewType.charAt(0).toUpperCase() + viewType.slice(1)} view is now active for this project schedule!`);
+        this.currentScheduleView = viewType;
+        this.loadSchedule();
+    }
+
+    loadSchedule() {
+        const currentProjectHeader = this.currentProject ? `
+            <div class="card border-0 shadow-sm mb-4 border-start border-4 border-primary">
+                <div class="card-body py-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted small text-uppercase fw-bold">Active Project</span>
+                            <h5 class="mb-0 text-primary">${this.currentProject.name}</h5>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary" onclick="app.addMilestone()"><i class="bi bi-plus-lg"></i> Add Task</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        ` : `
+            <div class="alert alert-warning shadow-sm border-0 d-flex align-items-center">
+                <i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i>
+                <div>
+                    <strong>No project selected.</strong> 
+                    <a href="#" onclick="app.loadModule('projects')" class="alert-link">Choose a project</a> to view its master schedule.
+                </div>
+            </div>
+        `;
+
+        let viewContent = '';
+        switch(this.currentScheduleView) {
+            case 'gantt': viewContent = this.renderScheduleGantt(); break;
+            case 'board': viewContent = this.renderScheduleBoard(); break;
+            default: viewContent = this.renderScheduleList(); break;
+        }
+
+        document.getElementById('mainContent').innerHTML = `
+            ${currentProjectHeader}
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-1 fw-bold"><i class="bi bi-calendar3 text-primary"></i> Master Schedule</h2>
+                            <p class="text-muted">Critical path and milestone tracking</p>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-white border shadow-sm ${this.currentScheduleView === 'list' ? 'active' : ''}" onclick="app.showScheduleView('list')">List</button>
+                            <button class="btn btn-white border shadow-sm ${this.currentScheduleView === 'gantt' ? 'active' : ''}" onclick="app.showScheduleView('gantt')">Gantt</button>
+                            <button class="btn btn-white border shadow-sm ${this.currentScheduleView === 'board' ? 'active' : ''}" onclick="app.showScheduleView('board')">Board</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            ${viewContent}
+        `;
+    }
+
+    renderScheduleList() {
+        return `
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4">WBS</th>
+                                    <th>Task / Milestone</th>
+                                    <th>Start Date</th>
+                                    <th>End Date</th>
+                                    <th>Assignee</th>
+                                    <th>Status</th>
+                                    <th class="text-end pe-4">Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="ps-4 text-muted small">1.0</td>
+                                    <td class="fw-bold">Site Mobilization</td>
+                                    <td>Oct 10, 2023</td>
+                                    <td>Oct 15, 2023</td>
+                                    <td><span class="badge bg-light text-dark border">Site Manager</span></td>
+                                    <td><span class="badge bg-success-subtle text-success border">COMPLETED</span></td>
+                                    <td class="text-end pe-4">100%</td>
+                                </tr>
+                                <tr>
+                                    <td class="ps-4 text-muted small">2.0</td>
+                                    <td class="fw-bold">Foundation & Slab</td>
+                                    <td>Oct 16, 2023</td>
+                                    <td>Oct 30, 2023</td>
+                                    <td><span class="badge bg-light text-dark border">Concrete Sub</span></td>
+                                    <td><span class="badge bg-primary-subtle text-primary border">IN PROGRESS</span></td>
+                                    <td class="text-end pe-4">45%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderScheduleGantt() {
+        return `
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <div class="gantt-container overflow-auto" style="min-height: 400px;">
+                        <div class="d-flex mb-4 border-bottom pb-2 text-muted small fw-bold">
+                            <div style="width: 200px;">TASK</div>
+                            <div class="flex-grow-1 d-flex justify-content-between">
+                                <span>OCT 01</span><span>OCT 15</span><span>NOV 01</span><span>NOV 15</span>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center mb-3">
+                            <div style="width: 200px;" class="small">Site Mobilization</div>
+                            <div class="flex-grow-1 position-relative" style="height: 20px; background: #f8f9fa; border-radius: 10px;">
+                                <div class="bg-success" style="position: absolute; left: 10%; width: 15%; height: 100%; border-radius: 10px;"></div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center mb-3">
+                            <div style="width: 200px;" class="small">Foundation & Slab</div>
+                            <div class="flex-grow-1 position-relative" style="height: 20px; background: #f8f9fa; border-radius: 10px;">
+                                <div class="bg-primary" style="position: absolute; left: 25%; width: 25%; height: 100%; border-radius: 10px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderScheduleBoard() {
+        return `
+            <div class="row g-4">
+                <div class="col-md-4"><div class="p-3 bg-light rounded shadow-sm"><h6>Upcoming</h6><div class="card p-2 mb-2 border-0 shadow-sm">Vertical Framing</div></div></div>
+                <div class="col-md-4"><div class="p-3 bg-light rounded shadow-sm"><h6>In Progress</h6><div class="card p-2 mb-2 border-0 shadow-sm">Foundation & Slab</div></div></div>
+                <div class="col-md-4"><div class="p-3 bg-light rounded shadow-sm"><h6>Completed</h6><div class="card p-2 mb-2 border-0 shadow-sm">Site Mobilization</div></div></div>
+            </div>
+        `;
     }
 
     showCompanySettings() {
@@ -605,11 +867,27 @@ class ConstructProApp {
 
     async loadIndustries() {
         try {
-            console.log('Loading industries from API...');
-            const response = await fetch('/api/industries');
             let industries = [];
-            if (response.ok) {
-                industries = await response.json();
+            if (window.dataManager) {
+                industries = window.dataManager.getIndustries();
+            } else {
+                console.log('Loading industries from API fallback...');
+                const response = await fetch('/api/industries');
+                if (response.ok) {
+                    industries = await response.json();
+                }
+            }
+            
+            if (!industries || industries.length === 0) {
+                industries = [
+                    { id: 1, name: 'General Contractor' },
+                    { id: 2, name: 'Electrical' },
+                    { id: 3, name: 'Plumbing' },
+                    { id: 4, name: 'Roofing' },
+                    { id: 5, name: 'Landscaping' },
+                    { id: 6, name: 'Demolition' },
+                    { id: 7, name: 'Chimney Sweep' }
+                ];
             }
             
             const select = document.getElementById('industrySelect');
@@ -1869,112 +2147,6 @@ class ConstructProApp {
         `;
     }
 
-    loadSchedule() {
-        const currentProjectHeader = this.currentProject ? `
-            <div class="card border-0 shadow-sm mb-4 border-start border-4 border-primary">
-                <div class="card-body py-2">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="text-muted small text-uppercase fw-bold">Active Project</span>
-                            <h5 class="mb-0 text-primary">${this.currentProject.name}</h5>
-                        </div>
-                        <div class="btn-group btn-group-sm">
-                            <button class="btn btn-outline-primary" onclick="app.addMilestone()"><i class="bi bi-plus-lg"></i> Add Task</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        ` : `
-            <div class="alert alert-warning shadow-sm border-0 d-flex align-items-center">
-                <i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i>
-                <div>
-                    <strong>No project selected.</strong> 
-                    <a href="#" onclick="app.loadModule('projects')" class="alert-link">Choose a project</a> to view its master schedule.
-                </div>
-            </div>
-        `;
-
-        document.getElementById('mainContent').innerHTML = `
-            ${currentProjectHeader}
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h2 class="mb-1 fw-bold"><i class="bi bi-calendar3 text-primary"></i> Master Schedule</h2>
-                            <p class="text-muted">Critical path and milestone tracking</p>
-                        </div>
-                        <div class="btn-group">
-                            <button class="btn btn-white border shadow-sm active" onclick="app.showScheduleView('list')">List</button>
-                            <button class="btn btn-white border shadow-sm" onclick="app.showScheduleView('gantt')">Gantt</button>
-                            <button class="btn btn-white border shadow-sm" onclick="app.showScheduleView('board')">Board</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card border-0 shadow-sm">
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="bg-light">
-                                <tr>
-                                    <th class="ps-4">WBS</th>
-                                    <th>Task / Milestone</th>
-                                    <th>Start Date</th>
-                                    <th>End Date</th>
-                                    <th>Assignee</th>
-                                    <th>Status</th>
-                                    <th class="text-end pe-4">Progress</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td class="ps-4 text-muted small">1.0</td>
-                                    <td class="fw-bold">Site Mobilization</td>
-                                    <td>Oct 10, 2023</td>
-                                    <td>Oct 15, 2023</td>
-                                    <td><span class="badge bg-light text-dark border">Site Manager</span></td>
-                                    <td><span class="badge bg-success-subtle text-success border">COMPLETED</span></td>
-                                    <td class="text-end pe-4">100%</td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-4 text-muted small">2.0</td>
-                                    <td class="fw-bold">Foundation & Slab</td>
-                                    <td>Oct 16, 2023</td>
-                                    <td>Oct 30, 2023</td>
-                                    <td><span class="badge bg-light text-dark border">Concrete Sub</span></td>
-                                    <td><span class="badge bg-primary-subtle text-primary border">IN PROGRESS</span></td>
-                                    <td class="text-end pe-4">
-                                        <div class="progress" style="height: 6px; width: 60px; margin-left: auto;">
-                                            <div class="progress-bar" style="width: 45%"></div>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-4 text-muted small">3.0</td>
-                                    <td class="fw-bold">Framing Phase</td>
-                                    <td>Nov 01, 2023</td>
-                                    <td>Nov 20, 2023</td>
-                                    <td><span class="badge bg-light text-dark border">Carpentry Crew</span></td>
-                                    <td><span class="badge bg-warning-subtle text-warning border">UPCOMING</span></td>
-                                    <td class="text-end pe-4">0%</td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-4 text-muted small">4.0</td>
-                                    <td class="fw-bold">Rough-In Mechanical</td>
-                                    <td>Nov 22, 2023</td>
-                                    <td>Dec 05, 2023</td>
-                                    <td><span class="badge bg-light text-dark border">Multiple Subs</span></td>
-                                    <td><span class="badge bg-warning-subtle text-warning border">UPCOMING</span></td>
-                                    <td class="text-end pe-4">0%</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
 
     loadDailyLogs() {
         const currentProjectHeader = this.currentProject ? `
@@ -2098,7 +2270,7 @@ class ConstructProApp {
                             </div>
                         </div>
                         <div class="card-footer bg-white border-0 text-end py-3">
-                            <button class="btn btn-sm btn-outline-primary" onclick="app.showAlert('info', 'Daily log editing is now active for this session!')">Edit Entry</button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="app.showEditLogModal()">Edit Entry</button>
                             <button class="btn btn-sm btn-primary" onclick="app.generateDailyLogPDF()">Generate PDF Report</button>
                         </div>
                     </div>
