@@ -653,7 +653,7 @@ class AuthManager {
         
         this.currentUser = demoUser;
         this.isAuthenticated = true;
-        this.completeLogin(false);
+        this.loginUser(demoUser, false);
     }
 
     deleteUser(userId) {

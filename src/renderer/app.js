@@ -658,98 +658,115 @@ class ConstructProApp {
     }
 
     showAddAdminUserModal() {
-        if (!document.getElementById('addAdminUserModal')) {
-            const modalHtml = `
-                <div class="modal fade" id="addAdminUserModal" tabindex="-1">
-                    <div class="modal-dialog">
-                        <div class="modal-content border-0 shadow-lg">
-                            <div class="modal-header bg-danger text-white">
-                                <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i> Add System User</h5>
-                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body p-4">
-                                <form id="addAdminUserForm">
-                                    <div class="row g-3">
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold small">First Name</label>
-                                            <input type="text" class="form-control" id="adminUserFirstName" required>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold small">Last Name</label>
-                                            <input type="text" class="form-control" id="adminUserLastName" required>
-                                        </div>
-                                        <div class="col-12">
-                                            <label class="form-label fw-bold small">Email Address</label>
-                                            <input type="email" class="form-control" id="adminUserEmail" required>
-                                        </div>
-                                        <div class="col-12">
-                                            <label class="form-label fw-bold small">Username</label>
-                                            <input type="text" class="form-control" id="adminUserUsername" required>
-                                        </div>
-                                        <div class="col-12">
-                                            <label class="form-label fw-bold small">Role</label>
-                                            <select class="form-select" id="adminUserRole" required>
-                                                <option value="owner">Company Owner (Admin)</option>
-                                                <option value="project_manager">Project Manager</option>
-                                                <option value="estimator">Estimator</option>
-                                                <option value="superintendent">Superintendent</option>
-                                                <option value="field_manager">Field Manager</option>
-                                                <option value="contractor">General Contractor</option>
-                                                <option value="subcontractor">Subcontractor</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-12">
-                                            <label class="form-label fw-bold small">Temporary Password</label>
-                                            <input type="password" class="form-control" id="adminUserPassword" required>
+        const modalId = 'addAdminUserModal';
+        let modal = document.getElementById(modalId);
+        if (modal) modal.remove();
+
+        const modalHtml = `
+            <div class="modal fade" id="${modalId}" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i> Register Team Member</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form id="addAdminUserForm">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">First Name</label>
+                                        <input type="text" class="form-control" name="firstName" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Last Name</label>
+                                        <input type="text" class="form-control" name="lastName" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Email Address</label>
+                                        <input type="email" class="form-control" name="email" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Username</label>
+                                        <input type="text" class="form-control" name="username" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Initial Password</label>
+                                        <input type="password" class="form-control" name="password" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small">Base Role</label>
+                                        <select class="form-select" name="role" required>
+                                            <option value="project_manager">Project Manager</option>
+                                            <option value="estimator">Estimator</option>
+                                            <option value="superintendent">Superintendent</option>
+                                            <option value="field_manager">Field Manager</option>
+                                            <option value="foreman">Foreman</option>
+                                            <option value="laborer">General Laborer</option>
+                                            <option value="subcontractor">External Subcontractor</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-12 mt-4">
+                                        <h6 class="fw-bold mb-3 border-bottom pb-2">Assign Permissions</h6>
+                                        <div class="row g-2">
+                                            ${['finance', 'daily-logs', 'team', 'blueprints', 'takeoff', 'schedule'].map(perm => `
+                                                <div class="col-md-4">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" name="permissions" value="${perm}" id="new_perm_${perm}">
+                                                        <label class="form-check-label text-capitalize" for="new_perm_${perm}">${perm.replace('-', ' ')}</label>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
                                         </div>
                                     </div>
-                                </form>
-                            </div>
-                            <div class="modal-footer bg-light">
-                                <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
-                                <button type="button" class="btn btn-danger px-4" onclick="app.saveAdminUser()">Create User Account</button>
-                            </div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button type="button" class="btn btn-white border" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary px-4" onclick="app.saveAdminUser()">Create Member</button>
                         </div>
                     </div>
                 </div>
-            `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-        }
-        new bootstrap.Modal(document.getElementById('addAdminUserModal')).show();
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById(modalId)).show();
     }
 
     saveAdminUser() {
-        const formData = {
-            firstName: document.getElementById('adminUserFirstName').value,
-            lastName: document.getElementById('adminUserLastName').value,
-            email: document.getElementById('adminUserEmail').value,
-            username: document.getElementById('adminUserUsername').value,
-            role: document.getElementById('adminUserRole').value,
-            password: document.getElementById('adminUserPassword').value
-        };
+        const form = document.getElementById('addAdminUserForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        // Handle multi-select permissions
+        const permissions = [];
+        form.querySelectorAll('input[name="permissions"]:checked').forEach(cb => {
+            permissions.push(cb.value);
+        });
+        data.permissions = permissions;
 
-        if (!formData.username || !formData.password) {
-            this.showAlert('danger', 'Please fill in all required fields');
+        if (!data.username || !data.password) {
+            this.showAlert('danger', 'Username and password are required');
             return;
         }
 
-        // Add to AuthManager users
         if (window.authManager) {
             const newUser = {
                 id: Date.now().toString(),
-                ...formData,
-                password: window.authManager.hashPassword(formData.password),
+                ...data,
+                password: window.authManager.hashPassword(data.password),
                 company: this.currentUser.company,
                 createdAt: new Date().toISOString(),
-                isActive: true
+                isActive: true,
+                type: data.role === 'subcontractor' ? 'Contractor' : 'Full-Time'
             };
             
             window.authManager.users.push(newUser);
             window.authManager.saveUsers();
             
-            this.showAlert('success', `User account created for ${formData.firstName} ${formData.lastName}`);
+            this.showAlert('success', `Team member account created for ${data.firstName}`);
             bootstrap.Modal.getInstance(document.getElementById('addAdminUserModal')).hide();
-            this.loadAdmin(); // Refresh the list
+            this.loadTeam();
         }
     }
 
@@ -3894,18 +3911,28 @@ class ConstructProApp {
         const users = window.authManager ? window.authManager.users : [];
         const subcontractors = window.dataManager ? window.dataManager.data.subcontractors : [];
         const currentUser = this.currentUser;
+        
+        // Mock live updates for Team Feed (ClickUp style)
+        const teamUpdates = [
+            { user: 'Demo User', action: 'updated the Foundation Pour task', time: '10m ago', icon: 'bi-check-circle-fill', color: 'text-success' },
+            { user: 'Mike Apex', action: 'uploaded site inspection photos', time: '1h ago', icon: 'bi-image', color: 'text-primary' },
+            { user: 'Dan Brick', action: 'marked Exterior Masonry as in-progress', time: '3h ago', icon: 'bi-play-fill', color: 'text-warning' }
+        ];
 
         document.getElementById('mainContent').innerHTML = `
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h2 class="mb-1 fw-bold"><i class="bi bi-person-badge text-primary"></i> Team Management</h2>
-                            <p class="text-muted">Manage crew members, subcontractors, and role assignments</p>
-                        </div>
-                        ${this.hasPermission('admin') ? `
+            <div class="row mb-4 align-items-center">
+                <div class="col">
+                    <h2 class="mb-1 fw-bold"><i class="bi bi-people-fill text-primary"></i> Team Workspace</h2>
+                    <p class="text-muted">Centralized crew management and real-time collaboration</p>
+                </div>
+                <div class="col-auto">
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-primary" onclick="app.showRecentChats()">
+                            <i class="bi bi-chat-dots me-1"></i> Messages
+                        </button>
+                        ${window.authManager.hasPermission('admin') ? `
                         <button class="btn btn-primary shadow-sm" onclick="app.showAddAdminUserModal()">
-                            <i class="bi bi-person-plus me-1"></i> Add Member
+                            <i class="bi bi-person-plus-fill me-1"></i> Add Member
                         </button>
                         ` : ''}
                     </div>
@@ -3913,82 +3940,85 @@ class ConstructProApp {
             </div>
 
             <div class="row g-4">
-                ${users.map(user => `
-                    <div class="col-md-6 col-lg-4">
-                        <div class="card border-0 shadow-sm h-100">
-                            <div class="card-body p-4 text-center">
-                                <div class="mb-3">
-                                    <div class="bg-primary-subtle text-primary rounded-circle d-inline-flex p-3" style="width: 80px; height: 80px; align-items: center; justify-content: center;">
-                                        <h3 class="mb-0 fw-bold">${(user.firstName?.[0] || '')}${(user.lastName?.[0] || '')}</h3>
+                <!-- Team Members Grid (Monday/ClickUp Style) -->
+                <div class="col-lg-8">
+                    <div class="card border-0 shadow-sm overflow-hidden" style="border-radius: 15px;">
+                        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0 fw-bold">Active Crew</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-light border active">Grid</button>
+                                <button class="btn btn-light border" onclick="app.showAlert('info', 'List view coming soon')">List</button>
+                            </div>
+                        </div>
+                        <div class="card-body p-4">
+                            <div class="row g-4">
+                                ${users.map(user => `
+                                    <div class="col-md-6">
+                                        <div class="card border h-100 hover-shadow transition" style="border-radius: 12px;">
+                                            <div class="card-body p-3">
+                                                <div class="d-flex align-items-start gap-3">
+                                                    <div class="bg-primary-subtle text-primary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 50px; height: 50px; font-weight: 700;">
+                                                        ${(user.firstName?.[0] || '')}${(user.lastName?.[0] || '')}
+                                                    </div>
+                                                    <div class="flex-grow-1 overflow-hidden">
+                                                        <h6 class="fw-bold mb-0 text-truncate">${user.firstName} ${user.lastName}</h6>
+                                                        <p class="text-muted small mb-2 text-truncate">${this.getRoleDisplayName(user.role)}</p>
+                                                        <div class="d-flex flex-wrap gap-1 mb-3">
+                                                            <span class="badge bg-light text-dark border-0 small px-2" style="font-size: 0.7rem;">${user.type || 'Full-Time'}</span>
+                                                            <span class="badge ${user.isActive ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} border-0 small px-2" style="font-size: 0.7rem;">
+                                                                ${user.isActive ? 'Online' : 'Offline'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-sm btn-outline-primary flex-grow-1" onclick="app.showUserProfile('${user.id}')">
+                                                        View Profile
+                                                    </button>
+                                                    ${user.id !== currentUser?.id ? `
+                                                        <button class="btn btn-sm btn-primary px-3" onclick="app.openDirectMessage('${user.id}')">
+                                                            <i class="bi bi-chat-fill"></i>
+                                                        </button>
+                                                    ` : ''}
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <h5 class="fw-bold mb-1">${user.firstName} ${user.lastName}</h5>
-                                <p class="text-muted small mb-2">${this.getRoleDisplayName(user.role)}</p>
-                                <div class="d-flex justify-content-center gap-2 mb-3">
-                                    <span class="badge bg-light text-dark border">${user.type || 'Full-Time'}</span>
-                                    <span class="badge ${user.isActive ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} border">
-                                        ${user.isActive ? 'Active' : 'Inactive'}
-                                    </span>
-                                </div>
-                                <hr>
-                                <div class="row g-2">
-                                    <div class="col-6">
-                                        <button class="btn btn-sm btn-outline-secondary w-100" onclick="app.showUserProfile('${user.id}')">
-                                            <i class="bi bi-person me-1"></i> Profile
-                                        </button>
-                                    </div>
-                                    <div class="col-6">
-                                        ${user.id !== currentUser?.id ? `
-                                            <button class="btn btn-sm btn-outline-primary w-100" onclick="app.openDirectMessage('${user.id}')">
-                                                <i class="bi bi-chat-dots me-1"></i> Message
-                                            </button>
-                                        ` : `
-                                            <button class="btn btn-sm btn-outline-info w-100" disabled>
-                                                <i class="bi bi-person-check me-1"></i> You
-                                            </button>
-                                        `}
-                                    </div>
-                                </div>
+                                `).join('')}
                             </div>
                         </div>
                     </div>
-                `).join('')}
-            </div>
 
-            <div class="row mt-5">
-                <div class="col-12">
-                    <div class="card border-0 shadow-sm">
-                        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0 fw-bold">Subcontractor Directory</h5>
+                    <!-- Subcontractors Section -->
+                    <div class="card border-0 shadow-sm mt-4" style="border-radius: 15px;">
+                        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0 fw-bold">External Partners</h5>
                             <button class="btn btn-sm btn-outline-primary" onclick="app.showAddSubcontractorModal()">
-                                <i class="bi bi-plus-lg me-1"></i> Add Sub
+                                <i class="bi bi-plus-lg"></i> Add Sub
                             </button>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
-                                <table class="table table-hover mb-0 align-middle">
-                                    <thead class="bg-light">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="bg-light text-muted small text-uppercase">
                                         <tr>
-                                            <th class="ps-4">Company Name</th>
+                                            <th class="ps-4">Company</th>
                                             <th>Trade</th>
-                                            <th>Contact Person</th>
                                             <th>Status</th>
-                                            <th class="text-end pe-4">Actions</th>
+                                            <th class="text-end pe-4">Contact</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="subcontractorList">
-                                        ${subcontractors.length === 0 ? `
+                                    <tbody>
+                                        ${subcontractors.length === 0 ? '<tr><td colspan="4" class="text-center py-4">No partners listed</td></tr>' : subcontractors.map(sub => `
                                             <tr>
-                                                <td colspan="5" class="text-center py-4 text-muted">No subcontractors added yet</td>
-                                            </tr>
-                                        ` : subcontractors.map(sub => `
-                                            <tr>
-                                                <td class="ps-4 fw-bold">${sub.company}</td>
-                                                <td><span class="badge bg-light text-dark border">${sub.trade}</span></td>
-                                                <td>${sub.contact}</td>
-                                                <td><span class="badge bg-success-subtle text-success border">Verified</span></td>
+                                                <td class="ps-4">
+                                                    <div class="fw-bold">${sub.company}</div>
+                                                    <small class="text-muted">${sub.contact}</small>
+                                                </td>
+                                                <td><span class="badge bg-light text-dark border-0">${sub.trade}</span></td>
+                                                <td><span class="badge bg-success-subtle text-success border-0">Verified</span></td>
                                                 <td class="text-end pe-4">
-                                                    <button class="btn btn-sm btn-link text-primary" onclick="app.showAlert('info', 'Messaging subs coming soon')"><i class="bi bi-chat-text"></i></button>
+                                                    <button class="btn btn-sm btn-link text-primary"><i class="bi bi-chat-text"></i></button>
                                                     <button class="btn btn-sm btn-link text-danger" onclick="app.deleteSubcontractor(${sub.id})"><i class="bi bi-trash"></i></button>
                                                 </td>
                                             </tr>
@@ -3996,6 +4026,35 @@ class ConstructProApp {
                                     </tbody>
                                 </table>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Feed Sidebar (ClickUp Style) -->
+                <div class="col-lg-4">
+                    <div class="card border-0 shadow-sm h-100" style="border-radius: 15px;">
+                        <div class="card-header bg-white py-3 border-bottom">
+                            <h5 class="mb-0 fw-bold">Live Activity Feed</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="list-group list-group-flush">
+                                ${teamUpdates.map(update => `
+                                    <div class="list-group-item border-0 py-3 px-4">
+                                        <div class="d-flex gap-3">
+                                            <div class="${update.color} fs-5 mt-1">
+                                                <i class="bi ${update.icon}"></i>
+                                            </div>
+                                            <div>
+                                                <p class="mb-0 small"><span class="fw-bold">${update.user}</span> ${update.action}</p>
+                                                <small class="text-muted">${update.time}</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="card-footer bg-light border-0 text-center py-3">
+                            <button class="btn btn-link btn-sm text-decoration-none" onclick="app.showAlert('info', 'Full history coming soon')">View all activity</button>
                         </div>
                     </div>
                 </div>
