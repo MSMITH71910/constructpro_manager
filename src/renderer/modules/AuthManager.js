@@ -601,6 +601,7 @@ class AuthManager {
         const rolePermissions = {
             'admin': ['*'],
             'owner': ['*'],
+            'contractor': ['*'],
             'project_manager': ['dashboard', 'projects', 'schedule', 'blueprints', 'takeoff', 'daily-logs', 'team', 'contracts', 'clients', 'finance', 'timeclock'],
             'estimator': ['dashboard', 'projects', 'blueprints', 'takeoff', 'contracts', 'clients'],
             'superintendent': ['dashboard', 'projects', 'schedule', 'blueprints', 'daily-logs', 'timeclock'],

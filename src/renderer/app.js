@@ -197,7 +197,7 @@ class ConstructProApp {
         `).join('');
 
         // Add Admin link if user has permission
-        if (this.currentUser.role === 'admin' || this.currentUser.role === 'owner') {
+        if (this.currentUser.role === 'admin' || this.currentUser.role === 'owner' || this.currentUser.role === 'contractor') {
             navHtml += `
                 <button class="btn btn-link nav-link px-3 nav-btn text-warning fw-bold" data-module="admin" onclick="app.loadModule('admin')">
                     <i class="bi bi-shield-lock"></i> ADMIN
